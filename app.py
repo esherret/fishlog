@@ -389,7 +389,6 @@ def get_moon_phase(dt):
     else: return "Waning Crescent"
 
 
-# Enhanced recognition using uploaded accuracy reference samples via color distance heuristic
 def recognize_fish_and_lure(image_file, lures):
     try:
         img = Image.open(image_file).convert('RGB').resize((30, 30))
@@ -487,7 +486,6 @@ with tab1:
         length = st.slider("Length (Inches)", 0.0, 40.0, 15.0, 0.5, key="c_len")
         selected_lure = st.selectbox("Lure Used", [l["name"] for l in lures] if lures else ["None"], key="c_lure")
 
-        # Thumbs up accuracy improvement integration linked directly to this catch entry
         st.markdown("---")
         st.write("👍 **Did our system correctly identify this fish?** Click thumbs up to add it to our recognition accuracy library!")
         is_thumbs_up = st.checkbox("👍 Thumbs Up (Correct ID)", key="thumbs_up_check")
@@ -518,7 +516,6 @@ with tab1:
             })
             save_catches(catches)
 
-            # If thumbs up is checked, link this entry image directly to the accuracy recognition sample table
             if is_thumbs_up:
                 samples = load_species_samples()
                 samples.append({
@@ -578,21 +575,69 @@ with tab4:
     catches = load_catches()
     if catches:
         filtered_df = get_filtered_catches_df(catches, prefix="hist_tab")
-        for idx, row in filtered_df.iterrows():
-            st.write(f"🐟 **{row.get('species')}** - {row.get('length')} inches on {row.get('formatted_datetime')}")
+        
+        view_style = st.radio("History View Style", ["Card View with Pictures", "Spreadsheet List"], horizontal=True, key="history_view_style_radio")
+
+        if view_style == "Spreadsheet List":
+            st.write("Spreadsheet-style summary of your logged catches:")
             
-            # Allow removal/updating which automatically cascades updates to the accuracy sample table if linked
-            if st.button(f"Delete Catch ID {row.get('id')[:6]}", key=f"del_catch_{idx}"):
-                updated_catches = [c for c in catches if c.get("id") != row.get("id")]
-                save_catches(updated_catches)
-                
-                # Clean up corresponding recognition reference sample if present
-                samples = load_species_samples()
-                updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
-                save_species_samples_table(updated_samples)
-                
-                st.success("Catch deleted successfully!")
-                st.rerun()
+            table_data = []
+            for _, row in filtered_df.iterrows():
+                table_data.append({
+                    "Date/Time": row.get("formatted_datetime") or f"{row.get('date')} {row.get('time')}",
+                    "Species": row.get("species"),
+                    "Length (in)": row.get("length"),
+                    "Lure": row.get("lure"),
+                    "Weather": row.get("weather"),
+                    "Wind": f"{row.get('wind_speed')} {row.get('wind_direction')}",
+                    "Tide": row.get("tide"),
+                    "Moon": row.get("moon_phase")
+                })
+            
+            st.dataframe(pd.DataFrame(table_data), width='stretch')
+            
+            st.markdown("---")
+            st.subheader("Manage / Delete Entries")
+            for idx, row in filtered_df.iterrows():
+                col_info, col_btn = st.columns([3, 1])
+                with col_info:
+                    st.write(f"🐟 **{row.get('species')}** ({row.get('length')} in) on {row.get('formatted_datetime')}")
+                with col_btn:
+                    if st.button("Delete", key=f"del_ss_{idx}"):
+                        updated_catches = [c for c in catches if c.get("id") != row.get("id")]
+                        save_catches(updated_catches)
+                        
+                        samples = load_species_samples()
+                        updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
+                        save_species_samples_table(updated_samples)
+                        
+                        st.success("Deleted!")
+                        st.rerun()
+        else:
+            for idx, row in filtered_df.iterrows():
+                col_img, col_info, col_act = st.columns([1, 2, 1])
+                with col_img:
+                    img_p = row.get("image_path")
+                    if img_p and os.path.exists(img_p):
+                        st.image(img_p, width=150)
+                with col_info:
+                    st.write(f"🐟 **Species:** {row.get('species')} ({row.get('length')} in)")
+                    st.write(f"📅 **Date:** {row.get('formatted_datetime')}")
+                    st.write(f"🎣 **Lure:** {row.get('lure')}")
+                    st.write(f"🌤️ **Weather:** {row.get('weather')} | 💨 **Wind:** {row.get('wind_speed')} {row.get('wind_direction')}")
+                    st.write(f"🌊 **Tide:** {row.get('tide')} | 🌙 **Moon:** {row.get('moon_phase')}")
+                with col_act:
+                    if st.button("Delete Entry", key=f"del_card_{idx}"):
+                        updated_catches = [c for c in catches if c.get("id") != row.get("id")]
+                        save_catches(updated_catches)
+                        
+                        samples = load_species_samples()
+                        updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
+                        save_species_samples_table(updated_samples)
+                        
+                        st.success("Deleted!")
+                        st.rerun()
+                st.divider()
     else:
         st.info("No history found.")
 
