@@ -276,21 +276,36 @@ with tab1:
         species = st.text_input("Fish Species", value=rec_species)
         length = st.slider("Length (Inches)", min_value=0.0, max_value=40.0, value=15.0, step=0.5)
 
+        # Lure Selection & Quick-Add Feature
+        st.subheader("Lure Used")
+        lure_names = [l["name"] for l in lures] if lures else []
+        lure_options = lure_names + ["+ Add New Lure..."]
+        
+        default_idx = lure_names.index(rec_lure) if rec_lure in lure_names else 0
+        chosen_lure_option = st.selectbox("Select Lure", lure_options, index=default_idx if lure_names else 0)
+
         selected_lure = None
-        if lures:
-            lure_names = [l["name"] for l in lures]
-            default_idx = lure_names.index(rec_lure) if rec_lure in lure_names else 0
-            chosen_lure_name = st.selectbox("Select Lure from Inventory", lure_names, index=default_idx)
-            
-            for l in lures:
-                if l["name"] == chosen_lure_name:
-                    selected_lure = l["name"]
-                    st.image(l["image_path"], width=120, caption=l["name"])
+        if chosen_lure_option == "+ Add New Lure...":
+            new_lure_name = st.text_input("New Lure Name")
+            new_lure_image = st.file_uploader("Upload New Lure Image", type=["jpg", "jpeg", "png"], key="new_lure_upload")
+            if new_lure_name and new_lure_image:
+                lure_img_filename = f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                lure_img_path = os.path.join(LURES_DIR, lure_img_filename)
+                raw_lure_img = Image.open(new_image_file if 'new_image_file' in locals() and new_image_file else new_lure_image)
+                proc_lure_img = process_image_orientation(raw_lure_img)
+                proc_lure_img.save(lure_img_path)
+                
+                lures.append({"name": new_lure_name, "image_path": lure_img_path})
+                save_json(LURES_FILE, lures)
+                selected_lure = new_lure_name
+                st.success(f"Added and selected new lure: {new_lure_name}")
+            else:
+                selected_lure = new_lure_name if new_lure_name else "Custom Lure"
         else:
-            st.warning("No lures in inventory. Please add a new lure below.")
-            new_lure_prompt = st.text_input("New Lure Name to Add")
-            if new_lure_prompt:
-                selected_lure = new_lure_prompt
+            selected_lure = chosen_lure_option
+            for l in lures:
+                if l["name"] == selected_lure:
+                    st.image(l["image_path"], width=120, caption=l["name"])
 
         if st.button("Save Catch Entry", type="primary"):
             img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
