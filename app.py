@@ -407,7 +407,7 @@ def recognize_fish_and_lure(image_file, lures):
     try:
         img = Image.open(image_file).convert('RGB')
         img_resized = img.resize((30, 30))
-        target_pixels = list(img_resized.getdata())
+        target_pixels = list(img_resized.getdata() if hasattr(img_resized, 'getdata') else img_resized.getdata())
         target_r = sum(p[0] for p in target_pixels) / len(target_pixels)
         target_g = sum(p[1] for p in target_pixels) / len(target_pixels)
         target_b = sum(p[2] for p in target_pixels) / len(target_pixels)
@@ -421,7 +421,7 @@ def recognize_fish_and_lure(image_file, lures):
                 if sample_path and os.path.exists(sample_path):
                     try:
                         s_img = Image.open(sample_path).convert('RGB').resize((30, 30))
-                        s_pixels = list(s_img.getdata())
+                        s_pixels = list(s_img.getdata() if hasattr(s_img, 'getdata') else s_img.getdata())
                         s_r = sum(p[0] for p in s_pixels) / len(s_pixels)
                         s_g = sum(p[1] for p in s_pixels) / len(s_pixels)
                         s_b = sum(p[2] for p in s_pixels) / len(s_pixels)
@@ -810,7 +810,7 @@ if admin_tab:
                                 st.success(msg)
                                 st.rerun()
                             else:
-                                st.error(f"Error: {msg}")
+                                st.error(f"Error: `msg`")
 
                         if submit_delete:
                             if u_id == user["id"]:
@@ -821,7 +821,7 @@ if admin_tab:
                                     st.success(msg)
                                     st.rerun()
                                 else:
-                                    st.error(f"Error: {msg}")
+                                    st.error(f"Error: `msg`")
         else:
             st.info("No users registered.")
 
@@ -850,4 +850,4 @@ if recognition_tab:
                         st.rerun()
                 st.divider()
         else:
-            st.info("No reference samples collected yet. Users can contribute via Thumbs Up when logging catches.")
+            st.info("No reference samples collected yet. Users can contribute via Correctly ID'd checkbox when logging catches.")
