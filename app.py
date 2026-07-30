@@ -1,8 +1,6 @@
+import base64
 import os
-import json
-from datetime import datetime, timedelta, time
-from PIL import Image, ImageOps
-from PIL.ExifTags import TAGS, GPSTAGS
+from datetime import datetime, time
 import pandas as pd
 import requests
 import streamlit as st
@@ -10,6 +8,7 @@ from streamlit_folium import st_folium
 import folium
 import gspread
 from google.oauth2.service_account import Credentials
+from PIL import Image, ImageOps
 
 # Configure page
 st.set_page_config(page_title="Fish Catch Log", page_icon="🎣", layout="wide")
@@ -67,13 +66,17 @@ for d in [DATA_DIR, LURES_DIR, CATCHES_DIR]:
     os.makedirs(d, exist_ok=True)
 
 
-# Google Sheets Connection Helper using st.secrets with escaped newline replacement
+# Google Sheets Connection Helper using flat Base64 Secrets Decoding
 def get_gspread_client():
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        credentials_dict = dict(st.secrets["gcp_service_account"])
-        if "private_key" in credentials_dict:
-            credentials_dict["private_key"] = credentials_dict["private_key"].replace("\\n", "\n")
+        credentials_dict = dict(st.secrets)
+        
+        # Decode base64 private key safely from flat secrets dictionary
+        if "private_key_base64" in credentials_dict:
+            decoded_bytes = base64.b64decode(credentials_dict["private_key_base64"])
+            credentials_dict["private_key"] = decoded_bytes.decode("utf-8")
+            
         creds = Credentials.from_service_account_info(credentials_dict, scopes=scope)
         client = gspread.authorize(creds)
         return client
@@ -337,7 +340,6 @@ def get_filtered_catches_df(catches, prefix="global"):
     if "tide" not in df.columns:
         df["tide"] = "N/A"
     
-    # Ensure numeric columns are properly typed
     if "length" in df.columns:
         df["length"] = pd.to_numeric(df["length"], errors="coerce").fillna(0.0)
     if "latitude" in df.columns:
@@ -359,7 +361,6 @@ def get_filtered_catches_df(catches, prefix="global"):
     wind_dir_list = ["All"] + list(df["wind_direction"].unique()) if "wind_direction" in df.columns else ["All"]
     selected_wind_dir = st.sidebar.selectbox("Wind Direction", wind_dir_list, key=f"{prefix}_wind_dir_sb")
 
-    # Time of day slider
     time_range = st.sidebar.slider(
         "Time of Day Filter", 
         value=(time(0, 0), time(23, 59)), 
@@ -376,7 +377,6 @@ def get_filtered_catches_df(catches, prefix="global"):
     if selected_wind_dir != "All":
         filtered_df = filtered_df[filtered_df["wind_direction"] == selected_wind_dir]
 
-    # Filter by time of day
     if not filtered_df.empty:
         def time_in_range(time_str):
             try:
@@ -453,7 +453,6 @@ with tab1:
         species = st.text_input("Fish Species", value=rec_species, key="catch_species_input")
         length = st.slider("Length (Inches)", min_value=0.0, max_value=40.0, value=15.0, step=0.5, key="catch_length_slider")
 
-        # Lure Selection & Visual Lure Picker Screen
         st.subheader("Lure Used")
         lure_names = [l["name"] for l in lures] if lures else []
         
@@ -494,7 +493,6 @@ with tab1:
                 st.rerun()
             st.markdown("---")
 
-        # Quick Add New Lure Option
         with st.expander("➕ Or Add a New Lure"):
             new_lure_name = st.text_input("New Lure Name", key="quick_new_lure_name")
             new_lure_image = st.file_uploader("Upload New Lure Image", type=["jpg", "jpeg", "png"], key="quick_new_lure_img")
@@ -541,7 +539,6 @@ with tab1:
             catches.append(record)
             save_catches(catches)
             
-            # Clear all session state variables related to input and uploading to return to a blank form
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
                 
@@ -572,9 +569,9 @@ with tab2:
                 img_tag = ""
                 img_p = c.get("image_path", "")
                 if img_p and os.path.exists(img_p):
-                    import base64
+                    import base64 as b64
                     with open(img_p, "rb") as img_file:
-                        encoded_img = base64.b64encode(img_file.read()).decode("utf-8")
+                        encoded_img = b64.b64encode(img_file.read()).decode("utf-8")
                         img_tag = f'<img src="data:image/jpeg;base64,{encoded_img}" width="150px" style="border-radius:5px; margin-bottom:5px;"/><br>'
                 
                 dt_disp = c.get('formatted_datetime')
@@ -698,7 +695,6 @@ with tab4:
             st.write("Click on any entry below to view its card, edit details, or delete it.")
             
             for idx, row in filtered_df.iterrows():
-                record_id = row.get("id")
                 record_date = row.get("date")
                 record_time = row.get("time")
                 record_lat = row.get("latitude")
@@ -792,7 +788,6 @@ with tab4:
                                     st.rerun()
         else:
             for idx, row in filtered_df.iterrows():
-                record_id = row.get("id")
                 record_date = row.get("date")
                 record_time = row.get("time")
                 record_lat = row.get("latitude")
