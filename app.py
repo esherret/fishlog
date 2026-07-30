@@ -220,7 +220,7 @@ with tab1:
             manual_lon = st.number_input("Longitude", value=float(lon) if lon else -80.60, format="%.6f")
 
         combined_dt = datetime.combine(log_date, log_time)
-        formatted_datetime_str = combined_dt.strftime("%d/%m/%Y %I:%M %p")
+        formatted_datetime_str = combined_dt.strftime("%m/%d/%Y %I:%M %p")
         st.write(f"**Logged Timestamp:** {formatted_datetime_str}")
 
         catches = load_json(DB_FILE)
@@ -315,11 +315,19 @@ with tab2:
                 if os.path.exists(c.get("image_path", "")):
                     img_tag = f'<img src="app/static/{c["image_path"]}" width="150px" style="border-radius:5px; margin-bottom:5px;"/><br>'
                 
+                dt_disp = c.get('formatted_datetime')
+                if not dt_disp:
+                    try:
+                        dt_obj = datetime.strptime(f"{c.get('date')} {c.get('time')}", "%Y-%m-%d %H:%M:%S")
+                        dt_disp = dt_obj.strftime("%m/%d/%Y %I:%M %p")
+                    except Exception:
+                        dt_disp = c.get('date')
+
                 popup_html = f"""
                 <div style="font-family: sans-serif; width: 180px;">
                     {img_tag}
                     <b>{c.get('species', 'Fish')}</b> ({c.get('length', 0)} in)<br>
-                    <b>Date:</b> {c.get('formatted_datetime', c.get('date'))}<br>
+                    <b>Date:</b> {dt_disp}<br>
                     <b>Lure:</b> {c.get('lure', 'N/A')}<br>
                     <b>Weather:</b> {c.get('weather', 'N/A')}<br>
                     <b>Tide:</b> {c.get('tide', 'N/A')}
@@ -413,7 +421,17 @@ with tab4:
             
             for idx, row in filtered_df.iterrows():
                 entry_id = row.get("id") or f"row_{idx}"
-                summary_label = f"📅 {row.get('date')} {row.get('time')} | 🐟 {row.get('species')} ({row.get('length')} in) | 🎣 {row.get('lure')}"
+                
+                # Format datetime to MM/DD/YYYY HH:MM AM/PM safely
+                dt_str = row.get('formatted_datetime', '')
+                if not dt_str:
+                    try:
+                        dt_obj = datetime.strptime(f"{row.get('date')} {row.get('time')}", "%Y-%m-%d %H:%M:%S")
+                        dt_str = dt_obj.strftime("%m/%d/%Y %I:%M %p")
+                    except Exception:
+                        dt_str = f"{row.get('date')} {row.get('time')}"
+
+                summary_label = f"📅 {dt_str} | 🐟 {row.get('species')} ({row.get('length')} in) | 🎣 {row.get('lure')}"
                 
                 with st.expander(summary_label):
                     col1, col2, col3 = st.columns([1, 2, 1])
@@ -423,40 +441,59 @@ with tab4:
                             st.image(img_p, width=180)
                     with col2:
                         st.write(f"**Species:** {row.get('species', 'N/A')} ({row.get('length', 0)} inches)")
-                        st.write(f"**Date/Time:** {row.get('formatted_datetime', str(row.get('date', '')) + ' ' + str(row.get('time', '')))}")
+                        st.write(f"**Date/Time:** {dt_str}")
                         st.write(f"**Lure:** {row.get('lure', 'N/A')}")
                         st.write(f"**Weather:** {row.get('weather', 'N/A')} | **Wind:** {row.get('wind_speed', 'N/A')} {row.get('wind_direction', 'N/A')}")
                         st.write(f"**Tide:** {row.get('tide', 'N/A')} | **Moon:** {row.get('moon_phase', 'N/A')}")
                     with col3:
-                        st.subheader("Management")
-                        edit_mode = st.checkbox("Edit Entry", key=f"edit_toggle_{entry_id}")
+                        st.subheader("Edit Entry")
                         
-                        if edit_mode:
-                            new_species = st.text_input("Edit Species", value=row.get('species', ''), key=f"edit_sp_{entry_id}")
-                            new_length = st.slider("Edit Length (Inches)", 0.0, 40.0, float(row.get('length', 15.0)), 0.5, key=f"edit_len_{entry_id}")
-                            new_lure = st.text_input("Edit Lure", value=row.get('lure', ''), key=f"edit_lure_{entry_id}")
-                            
-                            if st.button("Save Changes", key=f"save_edit_{entry_id}"):
-                                for c in catches:
-                                    if (c.get("id") and c.get("id") == entry_id) or (not c.get("id") and f"row_{idx}" == entry_id):
-                                        c["species"] = new_species
-                                        c["length"] = new_length
-                                        c["lure"] = new_lure
-                                save_json(DB_FILE, catches)
-                                st.success("Entry updated successfully!")
-                                st.rerun()
+                        new_species = st.text_input("Edit Species", value=row.get('species', ''), key=f"edit_sp_{entry_id}")
+                        new_length = st.slider("Edit Length (Inches)", 0.0, 40.0, float(row.get('length', 15.0)), 0.5, key=f"edit_len_{entry_id}")
+                        new_lure = st.text_input("Edit Lure", value=row.get('lure', ''), key=f"edit_lure_{entry_id}")
+                        
+                        new_image_file = st.file_uploader("Change Catch Image", type=["jpg", "jpeg", "png"], key=f"edit_img_{entry_id}")
+                        
+                        if st.button("Save Changes", key=f"save_edit_{entry_id}"):
+                            for c in catches:
+                                if (c.get("id") and c.get("id") == entry_id) or (not c.get("id") and f"row_{idx}" == entry_id):
+                                    c["species"] = new_species
+                                    c["length"] = new_length
+                                    c["lure"] = new_lure
+                                    if new_image_file:
+                                        img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                                        img_path = os.path.join(CATCHES_DIR, img_filename)
+                                        raw_img = Image.open(new_image_file)
+                                        proc_img = process_image_orientation(raw_img)
+                                        proc_img.save(img_path)
+                                        c["image_path"] = img_path
+                            save_json(DB_FILE, catches)
+                            st.success("Entry updated successfully!")
+                            st.rerun()
 
                         st.markdown("---")
-                        confirm_del = st.checkbox("Are you sure you want to delete this?", key=f"conf_del_{entry_id}")
-                        if confirm_del:
-                            if st.button("Confirm Delete", key=f"btn_del_{entry_id}", type="primary"):
-                                updated_catches = [c for c in catches if (c.get("id") and c.get("id") != entry_id)]
+                        if st.button("Delete Entry", key=f"btn_del_{entry_id}", type="secondary"):
+                            st.session_state[f"confirm_delete_{entry_id}"] = True
+                            
+                        if st.session_state.get(f"confirm_delete_{entry_id}", False):
+                            st.warning("Are you sure you want to delete this?")
+                            if st.button("Yes, Delete", key=f"yes_del_{entry_id}", type="primary"):
+                                updated_catches = [c for c in catches if not (c.get("id") and c.get("id") == entry_id)]
                                 save_json(DB_FILE, updated_catches)
                                 st.success("Entry deleted!")
                                 st.rerun()
         else:
             for idx, row in filtered_df.iterrows():
                 entry_id = row.get("id") or f"card_{idx}"
+                
+                dt_str = row.get('formatted_datetime', '')
+                if not dt_str:
+                    try:
+                        dt_obj = datetime.strptime(f"{row.get('date')} {row.get('time')}", "%Y-%m-%d %H:%M:%S")
+                        dt_str = dt_obj.strftime("%m/%d/%Y %I:%M %p")
+                    except Exception:
+                        dt_str = f"{row.get('date')} {row.get('time')}"
+
                 col1, col2, col3 = st.columns([1, 2, 1])
                 with col1:
                     img_p = row.get("image_path")
@@ -464,15 +501,19 @@ with tab4:
                         st.image(img_p, width=180)
                 with col2:
                     st.write(f"**Species:** {row.get('species', 'N/A')} ({row.get('length', 0)} inches)")
-                    st.write(f"**Date/Time:** {row.get('formatted_datetime', str(row.get('date', '')) + ' ' + str(row.get('time', '')))}")
+                    st.write(f"**Date/Time:** {dt_str}")
                     st.write(f"**Lure:** {row.get('lure', 'N/A')}")
                     st.write(f"**Weather:** {row.get('weather', 'N/A')} | **Wind:** {row.get('wind_speed', 'N/A')} {row.get('wind_direction', 'N/A')}")
                     st.write(f"**Tide:** {row.get('tide', 'N/A')} | **Moon:** {row.get('moon_phase', 'N/A')}")
                 with col3:
-                    confirm_del_card = st.checkbox("Are you sure you want to delete this?", key=f"conf_del_card_{entry_id}")
-                    if confirm_del_card and st.button("Confirm Delete", key=f"del_card_{entry_id}", type="primary"):
-                        updated_catches = [c for c in catches if (c.get("id") and c.get("id") != entry_id)]
-                        save_json(DB_FILE, updated_catches)
-                        st.success("Entry deleted!")
-                        st.rerun()
+                    if st.button("Delete Entry", key=f"btn_del_card_{entry_id}", type="secondary"):
+                        st.session_state[f"confirm_delete_card_{entry_id}"] = True
+                        
+                    if st.session_state.get(f"confirm_delete_card_{entry_id}", False):
+                        st.warning("Are you sure you want to delete this?")
+                        if st.button("Yes, Delete", key=f"yes_del_card_{entry_id}", type="primary"):
+                            updated_catches = [c for c in catches if not (c.get("id") and c.get("id") == entry_id)]
+                            save_json(DB_FILE, updated_catches)
+                            st.success("Entry deleted!")
+                            st.rerun()
                 st.divider()
