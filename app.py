@@ -497,13 +497,15 @@ with tab1:
         lures = load_lures()
         rec_species, rec_lure = recognize_fish_and_lure(catch_image_file, lures)
 
-        species = st.text_input("Fish Species", value=rec_species, key="c_species")
+        col_sp1, col_sp2 = st.columns([3, 1])
+        with col_sp1:
+            species = st.text_input("Fish Species", value=rec_species, key="c_species")
+        with col_sp2:
+            st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
+            is_correct_id = st.checkbox("(Correctly ID'd?)", key="correct_id_check")
+
         length = st.slider("Length (Inches)", 0.0, 40.0, 15.0, 0.5, key="c_len")
         selected_lure = st.selectbox("Lure Used", [l["name"] for l in lures] if lures else ["None"], key="c_lure")
-
-        st.markdown("---")
-        st.write("👍 **Did our system correctly identify this fish?** Click thumbs up to add it to our recognition accuracy library!")
-        is_thumbs_up = st.checkbox("👍 Thumbs Up (Correct ID)", key="thumbs_up_check")
 
         if st.button("Save Catch Entry", type="primary"):
             img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
@@ -533,7 +535,7 @@ with tab1:
             })
             save_all_catches_raw(catches)
 
-            if is_thumbs_up:
+            if is_correct_id:
                 samples = load_species_samples()
                 samples.append({
                     "id": str(uuid.uuid4()),
