@@ -478,13 +478,13 @@ with tab4:
                         current_length = float(row.get('length') or 15.0)
                         current_lure = str(row.get('lure') or '')
 
-                        new_species = st.text_input("Edit Species", value=current_species, key=f"edit_sp_{entry_id}")
-                        new_length = st.slider("Edit Length (Inches)", 0.0, 40.0, current_length, 0.5, key=f"edit_len_{entry_id}")
-                        new_lure = st.text_input("Edit Lure", value=current_lure, key=f"edit_lure_{entry_id}")
+                        new_species = st.text_input("Edit Species", value=current_species, key=f"edit_sp_{entry_id}_{idx}")
+                        new_length = st.slider("Edit Length (Inches)", 0.0, 40.0, current_length, 0.5, key=f"edit_len_{entry_id}_{idx}")
+                        new_lure = st.text_input("Edit Lure", value=current_lure, key=f"edit_lure_{entry_id}_{idx}")
                         
-                        new_image_file = st.file_uploader("Change Catch Image", type=["jpg", "jpeg", "png"], key=f"edit_img_{entry_id}")
+                        new_image_file = st.file_uploader("Change Catch Image", type=["jpg", "jpeg", "png"], key=f"edit_img_{entry_id}_{idx}")
                         
-                        if st.button("Save Changes", key=f"save_edit_{entry_id}"):
+                        if st.button("Save Changes", key=f"save_edit_{entry_id}_{idx}"):
                             for c in catches:
                                 target_id = str(c.get("id") or f"row_{catches.index(c)}")
                                 if target_id == entry_id:
@@ -503,21 +503,21 @@ with tab4:
                             st.rerun()
 
                         st.markdown("---")
-                        if st.button("Delete Entry", key=f"btn_del_{entry_id}", type="secondary"):
-                            st.session_state[f"confirm_delete_{entry_id}"] = True
+                        if st.button("Delete Entry", key=f"btn_del_{entry_id}_{idx}", type="secondary"):
+                            st.session_state[f"confirm_delete_{entry_id}_{idx}"] = True
                             
-                        if st.session_state.get(f"confirm_delete_{entry_id}", False):
+                        if st.session_state.get(f"confirm_delete_{entry_id}_{idx}", False):
                             st.warning("Are you sure you want to delete this?")
                             col_yes, col_no = st.columns(2)
                             with col_yes:
-                                if st.button("Yes", key=f"yes_del_{entry_id}", type="primary"):
+                                if st.button("Yes", key=f"yes_del_{entry_id}_{idx}", type="primary"):
                                     updated_catches = [c for i, c in enumerate(catches) if str(c.get("id") or f"row_{i}") != entry_id]
                                     save_json(DB_FILE, updated_catches)
                                     st.success("Entry deleted!")
                                     st.rerun()
                             with col_no:
-                                if st.button("No", key=f"no_del_{entry_id}"):
-                                    st.session_state[f"confirm_delete_{entry_id}"] = False
+                                if st.button("No", key=f"no_del_{entry_id}_{idx}"):
+                                    st.session_state[f"confirm_delete_{entry_id}_{idx}"] = False
                                     st.rerun()
         else:
             for idx, row in filtered_df.iterrows():
@@ -543,20 +543,20 @@ with tab4:
                     st.write(f"**Weather:** {row.get('weather', 'N/A')} | **Wind:** {row.get('wind_speed', 'N/A')} {row.get('wind_direction', 'N/A')}")
                     st.write(f"**Tide:** {row.get('tide', 'N/A')} | **Moon:** {row.get('moon_phase', 'N/A')}")
                 with col3:
-                    if st.button("Delete Entry", key=f"btn_del_card_{entry_id}", type="secondary"):
-                        st.session_state[f"confirm_delete_card_{entry_id}"] = True
+                    if st.button("Delete Entry", key=f"btn_del_card_{entry_id}_{idx}", type="secondary"):
+                        st.session_state[f"confirm_delete_card_{entry_id}_{idx}"] = True
                         
-                    if st.session_state.get(f"confirm_delete_card_{entry_id}", False):
+                    if st.session_state.get(f"confirm_delete_card_{entry_id}_{idx}", False):
                         st.warning("Are you sure you want to delete this?")
                         col_yes, col_no = st.columns(2)
                         with col_yes:
-                            if st.button("Yes", key=f"yes_del_card_{entry_id}", type="primary"):
+                            if st.button("Yes", key=f"yes_del_card_{entry_id}_{idx}", type="primary"):
                                 updated_catches = [c for i, c in enumerate(catches) if str(c.get("id") or f"card_{i}") != entry_id]
                                 save_json(DB_FILE, updated_catches)
                                 st.success("Entry deleted!")
                                 st.rerun()
                         with col_no:
-                            if st.button("No", key=f"no_del_card_{entry_id}"):
-                                st.session_state[f"confirm_delete_card_{entry_id}"] = False
+                            if st.button("No", key=f"no_del_card_{entry_id}_{idx}"):
+                                st.session_state[f"confirm_delete_card_{entry_id}_{idx}"] = False
                                 st.rerun()
                 st.divider()
