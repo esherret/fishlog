@@ -500,11 +500,7 @@ with tab1:
             manual_lon = st.number_input("Longitude", value=float(lon) if lon else -80.60, format="%.6f", key="catch_lon_input")
         
         m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="250px", tiles="Esri.WorldImagery")
-        fish_icon = folium.CustomIcon(
-            icon_image="https://cdn-icons-png.flaticon.com/512/2932/2932454.png",
-            icon_size=(32, 32),
-            icon_anchor=(16, 16)
-        )
+        fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
         folium.Marker(location=[manual_lat, manual_lon], popup="Catch Location", icon=fish_icon).add_to(m_thumb)
         st_folium(m_thumb, width=700, height=250, key="thumb_map")
 
@@ -598,11 +594,7 @@ with tab2:
         valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
         if valid:
             m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11, tiles="Esri.WorldImagery")
-            fish_icon = folium.CustomIcon(
-                icon_image="https://cdn-icons-png.flaticon.com/512/2932/2932454.png",
-                icon_size=(32, 32),
-                icon_anchor=(16, 16)
-            )
+            fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
             for c in valid:
                 img_path = c.get("image_path")
                 img_html = ""
