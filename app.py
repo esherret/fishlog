@@ -227,12 +227,12 @@ with tab1:
     
     catch_image_file = None
     if upload_method == "Camera":
-        catch_image_file = st.camera_input("Take a photo of your catch")
+        catch_image_file = st.camera_input("Take a photo of your catch", key="catch_camera_input")
     else:
-        catch_image_file = st.file_uploader("Choose catch photo from gallery", type=["jpg", "jpeg", "png"])
+        catch_image_file = st.file_uploader("Choose catch photo from gallery", type=["jpg", "jpeg", "png"], key="catch_file_uploader")
 
     if catch_image_file:
-        rotation = st.selectbox("Rotate Image (Edit Menu)", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°")
+        rotation = st.selectbox("Rotate Image (Edit Menu)", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key="catch_rotation_select")
         
         processed_image = process_image_orientation(catch_image_file, rotation)
         st.image(processed_image, caption="Processed Catch Photo", width=350)
@@ -244,11 +244,11 @@ with tab1:
         with col1:
             default_date = dt.date() if dt else datetime.now().date()
             default_time = dt.time() if dt else datetime.now().time()
-            log_date = st.date_input("Date", value=default_date)
-            log_time = st.time_input("Time", value=default_time)
+            log_date = st.date_input("Date", value=default_date, key="catch_date_input")
+            log_time = st.time_input("Time", value=default_time, key="catch_time_input")
         with col2:
-            manual_lat = st.number_input("Latitude", value=float(lat) if lat else 28.39, format="%.6f")
-            manual_lon = st.number_input("Longitude", value=float(lon) if lon else -80.60, format="%.6f")
+            manual_lat = st.number_input("Latitude", value=float(lat) if lat else 28.39, format="%.6f", key="catch_lat_input")
+            manual_lon = st.number_input("Longitude", value=float(lon) if lon else -80.60, format="%.6f", key="catch_lon_input")
 
         combined_dt = datetime.combine(log_date, log_time)
         formatted_datetime_str = combined_dt.strftime("%m/%d/%Y %I:%M %p")
@@ -277,8 +277,8 @@ with tab1:
         lures = load_json(LURES_FILE)
         rec_species, rec_lure = recognize_fish_and_lure(catch_image_file, lures)
 
-        species = st.text_input("Fish Species", value=rec_species)
-        length = st.slider("Length (Inches)", min_value=0.0, max_value=40.0, value=15.0, step=0.5)
+        species = st.text_input("Fish Species", value=rec_species, key="catch_species_input")
+        length = st.slider("Length (Inches)", min_value=0.0, max_value=40.0, value=15.0, step=0.5, key="catch_length_slider")
 
         # Lure Selection & Visual Lure Picker Screen
         st.subheader("Lure Used")
@@ -364,11 +364,9 @@ with tab1:
             catches.append(record)
             save_json(DB_FILE, catches)
             
-            # Clear cache and state to reset form for the next fish
-            if "selected_lure_cache" in st.session_state:
-                del st.session_state.selected_lure_cache
-            if "picking_lure_visual" in st.session_state:
-                del st.session_state.picking_lure_visual
+            # Clear state to reset form and ensure a completely blank screen for the next fish
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
                 
             st.success("Catch successfully logged! Ready for next fish.")
             st.rerun()
