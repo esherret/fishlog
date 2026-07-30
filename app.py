@@ -472,25 +472,16 @@ def get_filtered_catches_df(catches, prefix="global"):
 with tab1:
     st.header("Log a New Catch")
     
-    upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, key="upload_method_radio")
-    catch_image_file = st.camera_input("Take photo", key="cam_input") if upload_method == "Camera" else st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key="file_input")
+    with st.form("log_catch_form", clear_on_submit=True):
+        upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, key="upload_method_radio")
+        catch_image_file = st.camera_input("Take photo", key="cam_input") if upload_method == "Camera" else st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key="file_input")
 
-    if catch_image_file:
-        rotation = st.selectbox("Rotate Image", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key="rot_sel")
-        processed_image = process_image_orientation(catch_image_file, rotation)
-        st.image(processed_image, caption="Processed Photo", width=350)
-
-        dt, lat, lon = extract_exif(catch_image_file)
-        
-        col_dt1, col_dt2 = st.columns(2)
-        with col_dt1:
-            log_date = st.date_input("Date (MM/DD/YYYY)", value=dt.date() if dt else datetime.now().date(), format="MM/DD/YYYY", key="c_date")
-        with col_dt2:
-            log_time = st.time_input("Time (AM/PM)", value=dt.time() if dt else datetime.now().time(), key="c_time")
+        log_date = st.date_input("Date (MM/DD/YYYY)", value=datetime.now().date(), format="MM/DD/YYYY", key="c_date")
+        log_time = st.time_input("Time (AM/PM)", value=datetime.now().time(), key="c_time")
 
         st.write("📍 **Catch Location:**")
         manual_lat = 28.39
-        manual_lon = float(lon) if lon else -80.60
+        manual_lon = -80.60
         
         m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="250px")
         fish_icon = folium.CustomIcon(
@@ -508,11 +499,10 @@ with tab1:
         st.info(f"🌤️ **Weather:** {weather_desc} | 💨 **Wind:** {wind_speed} {wind_dir} | 🌊 **Tide:** {get_tide_info(manual_lat, manual_lon, combined_dt)} | 🌙 **Moon:** {get_moon_phase(combined_dt)}")
 
         lures = load_lures()
-        rec_species, rec_lure = recognize_fish_and_lure(catch_image_file, lures)
-
+        
         col_sp1, col_sp2 = st.columns([3, 1])
         with col_sp1:
-            species = st.text_input("Type of Fish", value=rec_species, key="c_species")
+            species = st.text_input("Type of Fish", value="Snook", key="c_species")
         with col_sp2:
             st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             is_correct_id = st.checkbox("Correctly ID'd [ ]", key="correct_id_check")
@@ -520,49 +510,53 @@ with tab1:
         length = st.slider("Length (Inches)", 0.0, 40.0, 15.0, 0.5, key="c_len")
         selected_lure = st.selectbox("Lure Used", [l["name"] for l in lures] if lures else ["None"], key="c_lure")
 
-        if st.button("Save Catch Entry", type="primary"):
-            img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-            img_path = os.path.join(CATCHES_DIR, img_filename)
-            processed_image.save(img_path, optimize=True, quality=80)
+        submit_catch = st.form_submit_button("Save Catch Entry", type="primary")
 
-            catch_id = str(uuid.uuid4())
-            catches = load_all_catches_raw()
-            catches.append({
-                "id": catch_id,
-                "user_id": user["id"],
-                "date": log_date.strftime("%m/%d/%Y"),
-                "time": log_time.strftime("%I:%M %p"),
-                "formatted_datetime": formatted_dt_str,
-                "latitude": manual_lat,
-                "longitude": manual_lon,
-                "species": species,
-                "length": length,
-                "lure": selected_lure,
-                "weather": weather_desc,
-                "wind_speed": wind_speed,
-                "wind_direction": wind_dir,
-                "tide": get_tide_info(manual_lat, manual_lon, combined_dt),
-                "moon_phase": get_moon_phase(combined_dt),
-                "image_path": img_path,
-                "is_deleted": "false"
-            })
-            save_all_catches_raw(catches)
+        if submit_catch:
+            if catch_image_file:
+                processed_image = process_image_orientation(catch_image_file)
+                img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                img_path = os.path.join(CATCHES_DIR, img_filename)
+                processed_image.save(img_path, optimize=True, quality=80)
 
-            if is_correct_id:
-                samples = load_species_samples()
-                samples.append({
-                    "id": str(uuid.uuid4()),
+                catch_id = str(uuid.uuid4())
+                catches = load_all_catches_raw()
+                catches.append({
+                    "id": catch_id,
                     "user_id": user["id"],
-                    "catch_id": catch_id,
+                    "date": log_date.strftime("%m/%d/%Y"),
+                    "time": log_time.strftime("%I:%M %p"),
+                    "formatted_datetime": formatted_dt_str,
+                    "latitude": manual_lat,
+                    "longitude": manual_lon,
                     "species": species,
-                    "image_path": img_path
+                    "length": length,
+                    "lure": selected_lure,
+                    "weather": weather_desc,
+                    "wind_speed": wind_speed,
+                    "wind_direction": wind_dir,
+                    "tide": get_tide_info(manual_lat, manual_lon, combined_dt),
+                    "moon_phase": get_moon_phase(combined_dt),
+                    "image_path": img_path,
+                    "is_deleted": "false"
                 })
-                save_species_samples_table(samples)
+                save_all_catches_raw(catches)
 
-            st.success("Catch successfully logged!")
-            st.rerun()
-    else:
-        st.info("Please upload or take a photo of your catch to begin logging.")
+                if is_correct_id:
+                    samples = load_species_samples()
+                    samples.append({
+                        "id": str(uuid.uuid4()),
+                        "user_id": user["id"],
+                        "catch_id": catch_id,
+                        "species": species,
+                        "image_path": img_path
+                    })
+                    save_species_samples_table(samples)
+
+                st.success("Catch successfully logged and form cleared for next entry!")
+                st.rerun()
+            else:
+                st.error("Please provide or upload a catch photo.")
 
 
 # --- TAB 2: CATCH MAP ---
@@ -846,7 +840,7 @@ if admin_tab:
             st.info("No users registered.")
 
 
-# --- TAB 7: FISH RECOGNITION LIBRARY (ADMIN) ---
+# --- Tab 7: Fish Recognition Library (Admin) ---
 if recognition_tab:
     with recognition_tab:
         st.header("🧬 Fish Recognition Accuracy Library")
@@ -867,7 +861,7 @@ if recognition_tab:
                     samples = load_species_samples()
                     samples.append({
                         "id": str(uuid.uuid4()),
-                        name_key := "user_id": user["id"],
+                        "user_id": user["id"],
                         "catch_id": "manual_admin_upload",
                         "species": new_sample_species,
                         "image_path": img_path
@@ -894,7 +888,7 @@ if recognition_tab:
                     if st.button("Delete Reference", key=f"del_sample_{s_idx}"):
                         updated_samples = [s for s in samples if s.get("id") != sample.get("id")]
                         save_species_samples_table(updated_samples)
-                        st.success("Reference sample reference removed!")
+                        st.success("Reference sample removed!")
                         st.rerun()
                 st.divider()
         else:
