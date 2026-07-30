@@ -347,10 +347,13 @@ def process_image_orientation(image_file, rotation_angle=0):
 
 
 def _convert_to_degrees(value):
-    d = float(value[0].num) / float(value[0].den)
-    m = float(value[1].num) / float(value[1].den)
-    s = float(value[2].num) / float(value[2].den)
-    return d + (m / 60.0) + (s / 3600.0)
+    try:
+        d = float(value[0].num) / float(value[0].den)
+        m = float(value[1].num) / float(value[1].den)
+        s = float(value[2].num) / float(value[2].den)
+        return d + (m / 60.0) + (s / 3600.0)
+    except Exception:
+        return float(value)
 
 
 def extract_exif(image_file):
@@ -730,7 +733,7 @@ with tab4:
                     save_all_catches_raw(all_raw)
 
                     samples = load_species_samples()
-                    updated_samples = [s for s in samples if s.get("catch_id"] not in deleted_ids]
+                    updated_samples = [s for s in samples if s.get("catch_id") not in deleted_ids]
                     save_species_samples_table(updated_samples)
 
                     st.success(f"Successfully moved {len(selected_rows)} selected catch(es) to Recycle Bin!")
