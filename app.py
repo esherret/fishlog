@@ -827,7 +827,7 @@ with tab5:
             with col_act2:
                 if st.button("🔥 Delete Forever", key=f"perm_del_{idx}_{row.get('id')}"):
                     all_raw = load_all_catches_raw()
-                    updated_raw = [c for c in all_raw if c.get("id"] != row.get("id")]
+                    updated_raw = [c for c in all_raw if c.get("id") != row.get("id")]
                     save_all_catches_raw(updated_raw)
                     st.success("Permanently deleted!")
                     st.rerun()
