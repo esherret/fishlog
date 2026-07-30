@@ -1,4 +1,3 @@
-import base64
 import os
 from datetime import datetime, time
 import pandas as pd
@@ -66,17 +65,11 @@ for d in [DATA_DIR, LURES_DIR, CATCHES_DIR]:
     os.makedirs(d, exist_ok=True)
 
 
-# Google Sheets Connection Helper using flat Base64 Secrets Decoding
+# Google Sheets Connection Helper using TOML multiline literal string parsing
 def get_gspread_client():
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        credentials_dict = dict(st.secrets)
-        
-        # Decode base64 private key safely from flat secrets dictionary
-        if "private_key_base64" in credentials_dict:
-            decoded_bytes = base64.b64decode(credentials_dict["private_key_base64"])
-            credentials_dict["private_key"] = decoded_bytes.decode("utf-8")
-            
+        credentials_dict = dict(st.secrets["gcp_service_account"])
         creds = Credentials.from_service_account_info(credentials_dict, scopes=scope)
         client = gspread.authorize(creds)
         return client
