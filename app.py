@@ -1,6 +1,6 @@
 import os
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 from PIL import Image, ImageOps
 from PIL.ExifTags import TAGS, GPSTAGS
 import pandas as pd
@@ -11,6 +11,37 @@ import folium
 
 # Configure page
 st.set_page_config(page_title="Fish Catch Log", page_icon="🎣", layout="wide")
+
+# Custom CSS for black slider thumbs, tracks, and sidebar expand/collapse button icon replacement
+st.markdown("""
+<style>
+    /* Slider track and thumb styling for black accent */
+    .stSlider [data-baseweb="slider"] div[role="slider"] {
+        background-color: #000000 !important;
+        border-color: #000000 !important;
+    }
+    .stSlider [data-baseweb="slider"] div > div > div > div {
+        background-color: #000000 !important;
+    }
+
+    /* Replace the sidebar collapse/expand double arrow with a filter icon when collapsed */
+    [data-testid="collapsedControl"] svg {
+        visibility: hidden;
+    }
+    [data-testid="collapsedControl"]::after {
+        content: "🔍";
+        font-size: 18px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Directory setup for persistent storage
 DATA_DIR = "data"
@@ -216,6 +247,58 @@ def recognize_fish_and_lure(image_file, lures):
     return detected_species, detected_lure
 
 
+# Helper function to filter dataframe based on sidebar widgets
+def get_filtered_catches_df(catches):
+    if not catches:
+        return pd.DataFrame()
+    
+    df = pd.DataFrame(catches)
+    if "tide" not in df.columns:
+        df["tide"] = "N/A"
+
+    st.sidebar.header("Filter Log Entries & Map")
+    species_list = ["All"] + list(df["species"].unique()) if "species" in df.columns else ["All"]
+    selected_species = st.sidebar.selectbox("Species", species_list)
+    
+    min_size_filter = st.sidebar.slider("Minimum Size (Inches)", 0.0, 40.0, 0.0, 0.5)
+    
+    lure_filter_list = ["All"] + list(df["lure"].unique()) if "lure" in df.columns else ["All"]
+    selected_lure_filter = st.sidebar.selectbox("Lure Caught On", lure_filter_list)
+    
+    wind_speed_slider = st.sidebar.slider("Max Wind Speed Filter (mph)", 0, 40, 40)
+    
+    wind_dir_list = ["All"] + list(df["wind_direction"].unique()) if "wind_direction" in df.columns else ["All"]
+    selected_wind_dir = st.sidebar.selectbox("Wind Direction", wind_dir_list)
+
+    # Time of day slider
+    time_range = st.sidebar.slider(
+        "Time of Day Filter", 
+        value=(time(0, 0), time(23, 59)), 
+        format="hh:mm A"
+    )
+
+    filtered_df = df.copy()
+    if selected_species != "All":
+        filtered_df = filtered_df[filtered_df["species"] == selected_species]
+    filtered_df = filtered_df[filtered_df["length"] >= min_size_filter]
+    if selected_lure_filter != "All":
+        filtered_df = filtered_df[filtered_df["lure"] == selected_lure_filter]
+    if selected_wind_dir != "All":
+        filtered_df = filtered_df[filtered_df["wind_direction"] == selected_wind_dir]
+
+    # Filter by time of day
+    if not filtered_df.empty:
+        def time_in_range(time_str):
+            try:
+                t = datetime.strptime(str(time_str), "%H:%M:%S").time()
+                return time_range[0] <= t <= time_range[1]
+            except Exception:
+                return True
+        filtered_df = filtered_df[filtered_df["time"].apply(time_in_range)]
+
+    return filtered_df
+
+
 # Navigation Tabs
 tab1, tab2, tab3, tab4 = st.tabs(["🎣 Log a Catch", "🗺️ Catch Map", "🧩 Manage Lures", "📊 History & Analytics"])
 
@@ -376,7 +459,9 @@ with tab2:
     st.header("Catch Location Map")
     catches = load_json(DB_FILE)
     if catches:
-        valid_catches = [c for c in catches if c.get("latitude") is not None and c.get("longitude") is not None]
+        filtered_df = get_filtered_catches_df(catches)
+        valid_catches = [row.to_dict() for _, row in filtered_df.iterrows() if row.get("latitude") is not None and row.get("longitude") is not None]
+        
         if valid_catches:
             avg_lat = sum(c["latitude"] for c in valid_catches) / len(valid_catches)
             avg_lon = sum(c["longitude"] for c in valid_catches) / len(valid_catches)
@@ -392,7 +477,6 @@ with tab2:
                 img_tag = ""
                 img_p = c.get("image_path", "")
                 if img_p and os.path.exists(img_p):
-                    # Base64 embed the image directly into the popup HTML to prevent path-resolution issues in Folium IFrames
                     import base64
                     with open(img_p, "rb") as img_file:
                         encoded_img = base64.b64encode(img_file.read()).decode("utf-8")
@@ -427,7 +511,7 @@ with tab2:
 
             st_folium(m, width=700, height=500)
         else:
-            st.info("No valid GPS coordinate data found in logs.")
+            st.info("No catches match the active filter criteria for the map.")
     else:
         st.info("No catches recorded yet to display on map.")
 
@@ -469,33 +553,7 @@ with tab4:
     if not catches:
         st.info("No catches logged yet.")
     else:
-        df = pd.DataFrame(catches)
-        
-        if "tide" not in df.columns:
-            df["tide"] = "N/A"
-
-        st.sidebar.header("Filter Log Entries")
-        species_list = ["All"] + list(df["species"].unique()) if "species" in df.columns else ["All"]
-        selected_species = st.sidebar.selectbox("Species", species_list)
-        
-        min_size_filter = st.sidebar.slider("Minimum Size (Inches)", 0.0, 40.0, 0.0, 0.5)
-        
-        lure_filter_list = ["All"] + list(df["lure"].unique()) if "lure" in df.columns else ["All"]
-        selected_lure_filter = st.sidebar.selectbox("Lure Caught On", lure_filter_list)
-        
-        wind_speed_slider = st.sidebar.slider("Max Wind Speed Filter (mph)", 0, 40, 40)
-        
-        wind_dir_list = ["All"] + list(df["wind_direction"].unique()) if "wind_direction" in df.columns else ["All"]
-        selected_wind_dir = st.sidebar.selectbox("Wind Direction", wind_dir_list)
-
-        filtered_df = df.copy()
-        if selected_species != "All":
-            filtered_df = filtered_df[filtered_df["species"] == selected_species]
-        filtered_df = filtered_df[filtered_df["length"] >= min_size_filter]
-        if selected_lure_filter != "All":
-            filtered_df = filtered_df[filtered_df["lure"] == selected_lure_filter]
-        if selected_wind_dir != "All":
-            filtered_df = filtered_df[filtered_df["wind_direction"] == selected_wind_dir]
+        filtered_df = get_filtered_catches_df(catches)
 
         view_mode = st.radio("View Layout", ["Card View with Images", "Row-by-Row Table (No Images)"], horizontal=True)
 
