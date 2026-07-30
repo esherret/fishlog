@@ -99,7 +99,7 @@ def register_user(first_name, last_name, email, password, zip_code, make_admin=F
     salt = bcrypt.gensalt()
     pwd_hash = bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
     
-    is_admin = make_admin or (len(users) == 0) # First registered user becomes admin automatically
+    is_admin = make_admin or (len(users) == 0)
 
     try:
         client.table("users").insert({
@@ -129,6 +129,36 @@ def authenticate_user(email, password):
     except Exception:
         pass
     return None
+
+
+def admin_update_user(user_id, first_name, last_name, email, zip_code, is_admin):
+    client = get_supabase_client()
+    if not client:
+        return False, "Database connection error."
+    try:
+        client.table("users").update({
+            "first_name": first_name,
+            "last_name": last_name,
+            "email": email.lower(),
+            "zip_code": zip_code,
+            "is_admin": is_admin
+        }).eq("id", user_id).execute()
+        return True, "User updated successfully."
+    except Exception as e:
+        return False, str(e)
+
+
+def admin_delete_user(user_id):
+    client = get_supabase_client()
+    if not client:
+        return False, "Database connection error."
+    try:
+        client.table("catches").delete().eq("user_id", user_id).execute()
+        client.table("lures").delete().eq("user_id", user_id).execute()
+        client.table("users").delete().eq("id", user_id).execute()
+        return True, "User deleted successfully."
+    except Exception as e:
+        return False, str(e)
 
 
 # Persistent Cookie Check for Auto-Login
@@ -477,10 +507,49 @@ with tab4:
 if admin_tab:
     with admin_tab:
         st.header("🛡️ User Management Console")
-        st.write("List of all registered users in the system:")
+        st.write("Manage registered user accounts, permissions, and records.")
+        
         all_users = get_all_users()
         if all_users:
-            users_df = pd.DataFrame(all_users)[["first_name", "last_name", "email", "zip_code", "is_admin"]]
-            st.dataframe(users_df, use_container_width=True)
+            for idx, u in enumerate(all_users):
+                u_id = u["id"]
+                u_name = f"{u['first_name']} {u['last_name']} ({u['email']})"
+                
+                with st.expander(f"👤 {u_name} {'[ADMIN]' if u['is_admin'] else ''}"):
+                    with st.form(key=f"edit_user_form_{u_id}"):
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            edit_first = st.text_input("First Name", value=u["first_name"], key=f"ef_{u_id}")
+                            edit_email = st.text_input("Email", value=u["email"], key=f"ee_{u_id}")
+                        with col2:
+                            edit_last = st.text_input("Last Name", value=u["last_name"], key=f"el_{u_id}")
+                            edit_zip = st.text_input("Home Zip Code", value=u["zip_code"], key=f"ez_{u_id}")
+                        
+                        edit_is_admin = st.checkbox("Administrator Privileges", value=u["is_admin"], key=f"ea_{u_id}")
+                        
+                        col_save, col_del = st.columns(2)
+                        with col_save:
+                            submit_edit = st.form_submit_button("💾 Save Changes", type="primary")
+                        with col_del:
+                            submit_delete = st.form_submit_button("🗑️ Delete Account", type="secondary")
+
+                        if submit_edit:
+                            success, msg = admin_update_user(u_id, edit_first, edit_last, edit_email, edit_zip, edit_is_admin)
+                            if success:
+                                st.success(msg)
+                                st.rerun()
+                            else:
+                                st.error(f"Error: {msg}")
+
+                        if submit_delete:
+                            if u_id == user["id"]:
+                                st.error("You cannot delete your own active admin account while logged in.")
+                            else:
+                                success, msg = admin_delete_user(u_id)
+                                if success:
+                                    st.success(msg)
+                                    st.rerun()
+                                else:
+                                    st.error(f"Error: {msg}")
         else:
             st.info("No users registered.")
