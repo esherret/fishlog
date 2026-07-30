@@ -1,8 +1,7 @@
-streamlit>=1.28.0
-pandas>=2.0.0
-requests>=2.31.0
-pillow>=10.0.0
-streamlit-folium>=0.15.0
-folium>=0.14.0
-gspread
-google-auth
+streamlit
+pandas
+requests
+streamlit-folium
+folium
+supabase
+pillow
