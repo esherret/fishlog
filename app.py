@@ -12,7 +12,7 @@ import folium
 # Configure page
 st.set_page_config(page_title="Fish Catch Log", page_icon="🎣", layout="wide")
 
-# Custom CSS for black slider thumbs, tracks, and sidebar expand/collapse button icon replacement
+# Custom CSS for black slider thumbs, tracks, sidebar filter icon, and responsive mobile lure sizing (min 2 per row)
 st.markdown("""
 <style>
     /* Slider track and thumb styling for black accent */
@@ -39,6 +39,15 @@ st.markdown("""
         left: 0;
         width: 100%;
         height: 100%;
+    }
+
+    /* Responsive lure grid sizing for mobile screens (minimum 2 per row) */
+    @media (max-width: 768px) {
+        [data-testid="column"] {
+            width: 50% !important;
+            flex: 50% !important;
+            min-width: 50% !important;
+        }
     }
 </style>
 """, unsafe_allow_html=True)
@@ -247,8 +256,8 @@ def recognize_fish_and_lure(image_file, lures):
     return detected_species, detected_lure
 
 
-# Helper function to filter dataframe based on sidebar widgets
-def get_filtered_catches_df(catches):
+# Helper function to filter dataframe based on sidebar widgets with unique keys
+def get_filtered_catches_df(catches, prefix="global"):
     if not catches:
         return pd.DataFrame()
     
@@ -258,23 +267,24 @@ def get_filtered_catches_df(catches):
 
     st.sidebar.header("Filter Log Entries & Map")
     species_list = ["All"] + list(df["species"].unique()) if "species" in df.columns else ["All"]
-    selected_species = st.sidebar.selectbox("Species", species_list)
+    selected_species = st.sidebar.selectbox("Species", species_list, key=f"{prefix}_species_sb")
     
-    min_size_filter = st.sidebar.slider("Minimum Size (Inches)", 0.0, 40.0, 0.0, 0.5)
+    min_size_filter = st.sidebar.slider("Minimum Size (Inches)", 0.0, 40.0, 0.0, 0.5, key=f"{prefix}_size_slider")
     
     lure_filter_list = ["All"] + list(df["lure"].unique()) if "lure" in df.columns else ["All"]
-    selected_lure_filter = st.sidebar.selectbox("Lure Caught On", lure_filter_list)
+    selected_lure_filter = st.sidebar.selectbox("Lure Caught On", lure_filter_list, key=f"{prefix}_lure_sb")
     
-    wind_speed_slider = st.sidebar.slider("Max Wind Speed Filter (mph)", 0, 40, 40)
+    wind_speed_slider = st.sidebar.slider("Max Wind Speed Filter (mph)", 0, 40, 40, key=f"{prefix}_wind_speed_slider")
     
     wind_dir_list = ["All"] + list(df["wind_direction"].unique()) if "wind_direction" in df.columns else ["All"]
-    selected_wind_dir = st.sidebar.selectbox("Wind Direction", wind_dir_list)
+    selected_wind_dir = st.sidebar.selectbox("Wind Direction", wind_dir_list, key=f"{prefix}_wind_dir_sb")
 
     # Time of day slider
     time_range = st.sidebar.slider(
         "Time of Day Filter", 
         value=(time(0, 0), time(23, 59)), 
-        format="hh:mm A"
+        format="hh:mm A",
+        key=f"{prefix}_time_slider"
     )
 
     filtered_df = df.copy()
@@ -384,10 +394,10 @@ with tab1:
             st.markdown("---")
             st.info("Click on any lure picture below to select it:")
             if lures:
-                lure_cols = st.columns(3)
+                lure_cols = st.columns(2)
                 for idx, l in enumerate(lures):
-                    with lure_cols[idx % 3]:
-                        st.image(l["image_path"], width=125, caption=l["name"])
+                    with lure_cols[idx % 2]:
+                        st.image(l["image_path"], use_container_width=True, caption=l["name"])
                         if st.button(f"Select {l['name']}", key=f"pic_pick_{idx}"):
                             st.session_state.selected_lure_cache = l["name"]
                             st.session_state.picking_lure_visual = False
@@ -459,7 +469,7 @@ with tab2:
     st.header("Catch Location Map")
     catches = load_json(DB_FILE)
     if catches:
-        filtered_df = get_filtered_catches_df(catches)
+        filtered_df = get_filtered_catches_df(catches, prefix="map_tab")
         valid_catches = [row.to_dict() for _, row in filtered_df.iterrows() if row.get("latitude") is not None and row.get("longitude") is not None]
         
         if valid_catches:
@@ -539,10 +549,10 @@ with tab3:
     st.subheader("Your Lures")
     lures = load_json(LURES_FILE)
     if lures:
-        cols = st.columns(3)
+        cols = st.columns(2)
         for idx, lure in enumerate(lures):
-            with cols[idx % 3]:
-                st.image(lure["image_path"], width=150, caption=lure["name"])
+            with cols[idx % 2]:
+                st.image(lure["image_path"], use_container_width=True, caption=lure["name"])
 
 
 # --- TAB 4: HISTORY & ANALYTICS ---
@@ -553,7 +563,7 @@ with tab4:
     if not catches:
         st.info("No catches logged yet.")
     else:
-        filtered_df = get_filtered_catches_df(catches)
+        filtered_df = get_filtered_catches_df(catches, prefix="history_tab")
 
         view_mode = st.radio("View Layout", ["Card View with Images", "Row-by-Row Table (No Images)"], horizontal=True)
 
