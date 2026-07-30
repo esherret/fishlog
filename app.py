@@ -212,10 +212,27 @@ def save_user_data(table_name, data_list):
 
 
 def load_catches():
+    all_data = load_user_data("catches")
+    # Return only active (non-deleted) catches
+    return [c for c in all_data if str(c.get("is_deleted", "false")).lower() != "true"]
+
+def load_trashed_catches():
+    all_data = load_user_data("catches")
+    # Return only trashed catches
+    return [c for c in all_data if str(c.get("is_deleted", "false")).lower() == "true"]
+
+def load_all_catches_raw():
     return load_user_data("catches")
 
 def save_catches(catches):
-    save_user_data("catches", catches)
+    # Preserve deleted flags when saving full list
+    existing_raw = load_all_catches_raw()
+    deleted_items = [c for c in existing_raw if str(c.get("is_deleted", "false")).lower() == "true"]
+    combined = catches + deleted_items
+    save_user_data("catches", combined)
+
+def save_all_catches_raw(catches_list):
+    save_user_data("catches", catches_list)
 
 def load_lures():
     return load_user_data("lures")
@@ -306,15 +323,15 @@ if st.sidebar.button("🚪 Sign Out"):
     st.rerun()
 
 # Build navigation tabs dynamically based on Admin role
-tab_names = ["🎣 Log a Catch", "🗺️ Catch Map", "🧩 Manage Lures", "📊 History & Analytics"]
+tab_names = ["🎣 Log a Catch", "🗺️ Catch Map", "🧩 Manage Lures", "📊 History & Analytics", "🗑️ Recycle Bin"]
 if user.get("is_admin"):
     tab_names.append("🛡️ User Management")
     tab_names.append("🧬 Fish Recognition Library")
 
 tabs = st.tabs(tab_names)
-tab1, tab2, tab3, tab4 = tabs[0], tabs[1], tabs[2], tabs[3]
-admin_tab = tabs[4] if user.get("is_admin") else None
-recognition_tab = tabs[5] if user.get("is_admin") and len(tabs) > 5 else None
+tab1, tab2, tab3, tab4, tab5 = tabs[0], tabs[1], tabs[2], tabs[3], tabs[4]
+admin_tab = tabs[5] if user.get("is_admin") and len(tabs) > 5 else None
+recognition_tab = tabs[6] if user.get("is_admin") and len(tabs) > 6 else None
 
 
 # Helper functions for app processing
@@ -496,9 +513,10 @@ with tab1:
             processed_image.save(img_path, optimize=True, quality=80)
 
             catch_id = str(uuid.uuid4())
-            catches = load_catches()
+            catches = load_all_catches_raw()
             catches.append({
                 "id": catch_id,
+                "user_id": user["id"],
                 "date": log_date.strftime("%Y-%m-%d"),
                 "time": log_time.strftime("%H:%M:%S"),
                 "formatted_datetime": formatted_dt_str,
@@ -512,9 +530,10 @@ with tab1:
                 "wind_direction": wind_dir,
                 "tide": get_tide_info(manual_lat, manual_lon, combined_dt),
                 "moon_phase": get_moon_phase(combined_dt),
-                "image_path": img_path
+                "image_path": img_path,
+                "is_deleted": "false"
             })
-            save_catches(catches)
+            save_all_catches_raw(catches)
 
             if is_thumbs_up:
                 samples = load_species_samples()
@@ -576,43 +595,66 @@ with tab4:
     if catches:
         filtered_df = get_filtered_catches_df(catches, prefix="hist_tab")
         
-        view_style = st.radio("History View Style", ["Card View with Pictures", "Spreadsheet List"], horizontal=True, key="history_view_style_radio")
+        view_style = st.radio("History View Style", ["Card View", "List View"], horizontal=True, key="history_view_style_radio")
 
-        if view_style == "Spreadsheet List":
-            st.write("Spreadsheet-style summary of your logged catches:")
+        if view_style == "List View":
+            st.write("List View of your logged catches:")
             
-            table_data = []
-            for _, row in filtered_df.iterrows():
-                table_data.append({
-                    "Date/Time": row.get("formatted_datetime") or f"{row.get('date')} {row.get('time')}",
-                    "Species": row.get("species"),
-                    "Length (in)": row.get("length"),
-                    "Lure": row.get("lure"),
-                    "Weather": row.get("weather"),
-                    "Wind": f"{row.get('wind_speed')} {row.get('wind_direction')}",
-                    "Tide": row.get("tide"),
-                    "Moon": row.get("moon_phase")
-                })
+            df_display = filtered_df.copy()
+            df_display.insert(0, "Select", False)
             
-            st.dataframe(pd.DataFrame(table_data), width='stretch')
+            display_cols = ["Select", "formatted_datetime", "species", "length", "lure", "weather", "wind_speed", "wind_direction", "tide", "moon_phase"]
+            available_cols = [c for c in display_cols if c in df_display.columns]
             
-            st.markdown("---")
-            st.subheader("Manage / Delete Entries")
-            for idx, row in filtered_df.iterrows():
-                col_info, col_btn = st.columns([3, 1])
-                with col_info:
-                    st.write(f"🐟 **{row.get('species')}** ({row.get('length')} in) on {row.get('formatted_datetime')}")
-                with col_btn:
-                    if st.button("Delete", key=f"del_ss_{idx}"):
-                        updated_catches = [c for c in catches if c.get("id") != row.get("id")]
-                        save_catches(updated_catches)
-                        
-                        samples = load_species_samples()
-                        updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
-                        save_species_samples_table(updated_samples)
-                        
-                        st.success("Deleted!")
-                        st.rerun()
+            edited_df = st.data_editor(
+                df_display[available_cols],
+                column_config={
+                    "Select": st.column_config.CheckboxColumn("Select", help="Select records to move to Recycle Bin", default=False),
+                    "formatted_datetime": "Date/Time",
+                    "species": "Species",
+                    "length": "Length (in)",
+                    "lure": "Lure",
+                    "weather": "Weather",
+                    "wind_speed": "Wind Speed",
+                    "wind_direction": "Wind Dir",
+                    "tide": "Tide",
+                    "moon_phase": "Moon"
+                },
+                disabled=[c for c in available_cols if c != "Select"],
+                hide_index=True,
+                width='stretch',
+                key="list_view_editor"
+            )
+
+            col_btn1, col_btn2 = st.columns([1, 4])
+            with col_btn1:
+                delete_selected_btn = st.button("🗑️ Delete Selected Catches", type="primary")
+
+            if delete_selected_btn:
+                selected_rows = edited_df[edited_df["Select"] == True]
+                if not selected_rows.empty:
+                    selected_datetime_strs = selected_rows["formatted_datetime"].tolist()
+                    
+                    all_raw = load_all_catches_raw()
+                    deleted_ids = []
+                    for c in all_raw:
+                        dt_str = c.get("formatted_datetime") or f"{c.get('date')} {c.get('time')}"
+                        if c.get("user_id") == user["id"] and dt_str in selected_datetime_strs and str(c.get("is_deleted", "false")).lower() != "true":
+                            c["is_deleted"] = "true"
+                            deleted_ids.append(c.get("id"))
+
+                    save_all_catches_raw(all_raw)
+
+                    # Remove from recognition accuracy library when soft-deleted
+                    samples = load_species_samples()
+                    updated_samples = [s for s in samples if s.get("catch_id") not in deleted_ids]
+                    save_species_samples_table(updated_samples)
+
+                    st.success(f"Successfully moved {len(selected_rows)} selected catch(es) to Recycle Bin!")
+                    st.rerun()
+                else:
+                    st.warning("No records selected for deletion.")
+
         else:
             for idx, row in filtered_df.iterrows():
                 col_img, col_info, col_act = st.columns([1, 2, 1])
@@ -620,29 +662,124 @@ with tab4:
                     img_p = row.get("image_path")
                     if img_p and os.path.exists(img_p):
                         st.image(img_p, width=150)
+                        if st.button("🔍 Full Screen Image", key=f"fs_img_{idx}"):
+                            st.session_state[f"fullscreen_{row.get('id')}"] = True
+
+                        if st.session_state.get(f"fullscreen_{row.get('id')}", False):
+                            st.markdown("---")
+                            st.image(img_p, caption=f"{row.get('species')} - Full Screen", width='stretch')
+                            if st.button("Close Full Screen", key=f"close_fs_{idx}"):
+                                st.session_state[f"fullscreen_{row.get('id')}"] = False
+                                st.rerun()
+                            st.markdown("---")
+
                 with col_info:
                     st.write(f"🐟 **Species:** {row.get('species')} ({row.get('length')} in)")
                     st.write(f"📅 **Date:** {row.get('formatted_datetime')}")
                     st.write(f"🎣 **Lure:** {row.get('lure')}")
                     st.write(f"🌤️ **Weather:** {row.get('weather')} | 💨 **Wind:** {row.get('wind_speed')} {row.get('wind_direction')}")
                     st.write(f"🌊 **Tide:** {row.get('tide')} | 🌙 **Moon:** {row.get('moon_phase')}")
+
                 with col_act:
-                    if st.button("Delete Entry", key=f"del_card_{idx}"):
-                        updated_catches = [c for c in catches if c.get("id") != row.get("id")]
-                        save_catches(updated_catches)
-                        
-                        samples = load_species_samples()
-                        updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
-                        save_species_samples_table(updated_samples)
-                        
-                        st.success("Deleted!")
-                        st.rerun()
+                    if st.button("Edit/Delete", key=f"edit_del_btn_{idx}"):
+                        st.session_state[f"show_edit_panel_{row.get('id')}"] = True
+
+                # Interactive Edit / Delete expander panel
+                if st.session_state.get(f"show_edit_panel_{row.get('id')}", False):
+                    with st.form(key=f"edit_catch_form_{row.get('id')}"):
+                        st.write(f"**Editing Catch ID:** {row.get('id')[:6]}")
+                        new_species = st.text_input("Species", value=row.get("species", ""))
+                        new_length = st.slider("Length (Inches)", 0.0, 40.0, float(row.get("length", 15.0)), 0.5, key=f"edit_len_{row.get('id')}")
+                        new_lure = st.text_input("Lure", value=row.get("lure", ""))
+                        new_img_file = st.file_uploader("Replace Catch Image (Optional)", type=["jpg", "jpeg", "png"], key=f"edit_file_{row.get('id')}")
+
+                        col_sub_save, col_sub_del, col_sub_cancel = st.columns(3)
+                        with col_sub_save:
+                            save_edits = st.form_submit_button("Save Changes", type="primary")
+                        with col_sub_del:
+                            delete_entry = st.form_submit_button("Confirm Delete", type="secondary")
+                        with col_sub_cancel:
+                            cancel_edit = st.form_submit_button("Cancel")
+
+                        if save_edits:
+                            all_c = load_all_catches_raw()
+                            for c in all_c:
+                                if c.get("id") == row.get("id"):
+                                    c["species"] = new_species
+                                    c["length"] = new_length
+                                    c["lure"] = new_lure
+                                    if new_img_file:
+                                        img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                                        img_path = os.path.join(CATCHES_DIR, img_filename)
+                                        process_image_orientation(new_img_file).save(img_path, optimize=True, quality=80)
+                                        c["image_path"] = img_path
+                            save_all_catches_raw(all_c)
+                            st.session_state[f"show_edit_panel_{row.get('id')}"] = False
+                            st.success("Entry updated successfully!")
+                            st.rerun()
+
+                        if delete_entry:
+                            all_c = load_all_catches_raw()
+                            for c in all_c:
+                                if c.get("id") == row.get("id"):
+                                    c["is_deleted"] = "true"
+                            save_all_catches_raw(all_c)
+                            
+                            samples = load_species_samples()
+                            updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
+                            save_species_samples_table(updated_samples)
+                            
+                            st.session_state[f"show_edit_panel_{row.get('id')}"] = False
+                            st.success("Moved to Recycle Bin!")
+                            st.rerun()
+
+                        if cancel_edit:
+                            st.session_state[f"show_edit_panel_{row.get('id')}"] = False
+                            st.rerun()
+
                 st.divider()
     else:
         st.info("No history found.")
 
 
-# --- TAB 5: ADMIN MANAGEMENT CONSOLE ---
+# --- TAB 5: RECYCLE BIN ---
+with tab5:
+    st.header("🗑️ Recycle Bin (Deleted Catches)")
+    st.write("Restore catches deleted by mistake or permanently delete them.")
+    
+    trashed = load_trashed_catches()
+    if trashed:
+        for idx, row in enumerate(trashed):
+            col_img, col_info, col_act1, col_act2 = st.columns([1, 2, 1, 1])
+            with col_img:
+                img_p = row.get("image_path")
+                if img_p and os.path.exists(img_p):
+                    st.image(img_p, width=120)
+            with col_info:
+                st.write(f"🐟 **{row.get('species')}** ({row.get('length')} in)")
+                st.write(f"📅 **Date:** {row.get('formatted_datetime')}")
+            with col_act1:
+                if st.button("♻️ Restore", key=f"restore_{idx}_{row.get('id')}"):
+                    all_raw = load_all_catches_raw()
+                    for c in all_raw:
+                        if c.get("id") == row.get("id"):
+                            c["is_deleted"] = "false"
+                    save_all_catches_raw(all_raw)
+                    st.success("Catch restored!")
+                    st.rerun()
+            with col_act2:
+                if st.button("🔥 Delete Forever", key=f"perm_del_{idx}_{row.get('id')}"):
+                    all_raw = load_all_catches_raw()
+                    updated_raw = [c for c in all_raw if c.get("id") != row.get("id")]
+                    save_all_catches_raw(updated_raw)
+                    st.success("Permanently deleted!")
+                    st.rerun()
+            st.divider()
+    else:
+        st.info("Recycle bin is empty.")
+
+
+# --- TAB 6: ADMIN MANAGEMENT CONSOLE ---
 if admin_tab:
     with admin_tab:
         st.header("🛡️ User Management Console")
@@ -694,7 +831,7 @@ if admin_tab:
             st.info("No users registered.")
 
 
-# --- TAB 6: FISH RECOGNITION LIBRARY (ADMIN) ---
+# --- TAB 7: FISH RECOGNITION LIBRARY (ADMIN) ---
 if recognition_tab:
     with recognition_tab:
         st.header("🧬 Fish Recognition Accuracy Library")
