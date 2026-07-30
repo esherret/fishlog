@@ -502,7 +502,7 @@ with tab1:
         
         col_sp1, col_sp2 = st.columns([3, 1])
         with col_sp1:
-            species = st.text_input("Type of Fish", value="Snook", key="c_species")
+            species = st.text_input("Type of Fish", value="", key="c_species")
         with col_sp2:
             st.markdown("<div style='height: 28px;'></div>", unsafe_allow_html=True)
             is_correct_id = st.checkbox("Correctly ID'd [ ]", key="correct_id_check")
@@ -529,7 +529,7 @@ with tab1:
                     "formatted_datetime": formatted_dt_str,
                     "latitude": manual_lat,
                     "longitude": manual_lon,
-                    "species": species,
+                    "species": species if species else "Unknown",
                     "length": length,
                     "lure": selected_lure,
                     "weather": weather_desc,
@@ -548,15 +548,15 @@ with tab1:
                         "id": str(uuid.uuid4()),
                         "user_id": user["id"],
                         "catch_id": catch_id,
-                        "species": species,
+                        "species": species if species else "Unknown",
                         "image_path": img_path
                     })
                     save_species_samples_table(samples)
 
-                st.success("Catch successfully logged and form cleared for next entry!")
+                st.success("Catch successfully logged and form cleared!")
                 st.rerun()
             else:
-                st.error("Please provide or upload a catch photo.")
+                st.error("Please provide or upload a catch photo before saving.")
 
 
 # --- TAB 2: CATCH MAP ---
@@ -765,8 +765,8 @@ with tab5:
                 if img_p and os.path.exists(img_p):
                     st.image(img_p, width=120)
             with col_info:
-                st.write(f"🐟 **{row.get('species')}** ({row.get('length')} in)")
-                st.write(f"📅 **Date:** {row.get('formatted_datetime')}")
+                    st.write(f"🐟 **{row.get('species')}** ({row.get('length')} in)")
+                    st.write(f"📅 **Date:** {row.get('formatted_datetime')}")
             with col_act1:
                 if st.button("♻️ Restore", key=f"restore_{idx}_{row.get('id')}"):
                     all_raw = load_all_catches_raw()
@@ -840,7 +840,7 @@ if admin_tab:
             st.info("No users registered.")
 
 
-# --- Tab 7: Fish Recognition Library (Admin) ---
+# --- TAB 7: FISH RECOGNITION LIBRARY (ADMIN) ---
 if recognition_tab:
     with recognition_tab:
         st.header("🧬 Fish Recognition Accuracy Library")
