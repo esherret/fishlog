@@ -540,7 +540,7 @@ with tab2:
     catches = load_catches()
     if catches:
         filtered_df = get_filtered_catches_df(catches, prefix="map_tab")
-        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude"] is not None and r.get("longitude") is not None]
+        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
         if valid:
             m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11)
             for c in valid:
