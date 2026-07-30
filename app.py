@@ -403,8 +403,8 @@ with tab1:
                     with lure_cols[idx % 2]:
                         with st.container():
                             if os.path.exists(l.get("image_path", "")):
-                                st.image(l["image_path"], width='stretch')
-                            if st.button(f"🎣 {l['name']}", key=f"pic_pick_{idx}", width='stretch'):
+                                st.image(l["image_path"], width="stretch")
+                            if st.button(f"🎣 {l['name']}", key=f"pic_pick_{idx}", width="stretch"):
                                 st.session_state.selected_lure_cache = l["name"]
                                 st.session_state.picking_lure_visual = False
                                 st.success(f"Selected {l['name']}!")
@@ -562,9 +562,9 @@ with tab3:
             with cols[idx % 2]:
                 with st.container():
                     if os.path.exists(lure.get("image_path", "")):
-                        st.image(lure["image_path"], width='stretch')
+                        st.image(lure["image_path"], width="stretch")
                     
-                    if st.button(f"🎣 {lure['name']}", key=f"select_lure_card_{idx}", width='stretch'):
+                    if st.button(f"🎣 {lure['name']}", key=f"select_lure_card_{idx}", width="stretch"):
                         st.session_state.selected_lure_cache = lure["name"]
                         st.success(f"Selected {lure['name']}! Go to 'Log a Catch' tab.")
 
@@ -675,7 +675,6 @@ with tab4:
                             st.rerun()
 
                         st.markdown("---")
-                        # Fixed unique state key for row-by-row deletion
                         del_btn_key = f"btn_del_{entry_id}_{idx}"
                         confirm_key = f"confirm_delete_{entry_id}_{idx}"
                         
@@ -690,6 +689,7 @@ with tab4:
                                     updated_catches = [c for i, c in enumerate(catches) if str(c.get("id") or f"row_{i}") != entry_id]
                                     save_json(DB_FILE, updated_catches)
                                     st.success("Entry deleted!")
+                                    st.session_state[confirm_key] = False
                                     st.rerun()
                             with col_no:
                                 if st.button("No", key=f"no_del_{entry_id}_{idx}"):
@@ -719,7 +719,6 @@ with tab4:
                     st.write(f"**Weather:** {row.get('weather', 'N/A')} | **Wind:** {row.get('wind_speed', 'N/A')} {row.get('wind_direction', 'N/A')}")
                     st.write(f"**Tide:** {row.get('tide', 'N/A')} | **Moon:** {row.get('moon_phase', 'N/A')}")
                 with col3:
-                    # Fixed unique state key for card-by-card deletion
                     del_card_btn_key = f"btn_del_card_{entry_id}_{idx}"
                     confirm_card_key = f"confirm_delete_card_{entry_id}_{idx}"
                     
@@ -734,6 +733,7 @@ with tab4:
                                 updated_catches = [c for i, c in enumerate(catches) if str(c.get("id") or f"card_{i}") != entry_id]
                                 save_json(DB_FILE, updated_catches)
                                 st.success("Entry deleted!")
+                                st.session_state[confirm_card_key] = False
                                 st.rerun()
                         with col_no:
                             if st.button("No", key=f"no_del_card_{entry_id}_{idx}"):
