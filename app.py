@@ -183,7 +183,6 @@ def recognize_fish_and_lure(image_file, lures):
         img_resized = img.resize((50, 50))
         pixels = list(img_resized.getdata())
         
-        # Calculate dominant color metrics (RGB averages)
         r_total = sum(p[0] for p in pixels)
         g_total = sum(p[1] for p in pixels)
         b_total = sum(p[2] for p in pixels)
@@ -193,11 +192,9 @@ def recognize_fish_and_lure(image_file, lures):
         avg_g = g_total / num_pixels
         avg_b = b_total / num_pixels
 
-        # Aspect ratio check (elongated vs deep-bodied)
         width, height = img.size
         aspect_ratio = width / float(height) if height > 0 else 1.0
 
-        # Heuristic classification mapping for common inshore sportfish
         if aspect_ratio > 1.4:
             detected_species = "Tarpon"
         elif avg_g > avg_r and avg_g > avg_b:
@@ -450,7 +447,7 @@ with tab4:
             st.write("Click on any entry below to view its card, edit details, or delete it.")
             
             for idx, row in filtered_df.iterrows():
-                entry_id = row.get("id") or f"row_{idx}"
+                entry_id = str(row.get("id") or f"row_{idx}")
                 
                 dt_str = row.get('formatted_datetime', '')
                 if not dt_str:
@@ -477,15 +474,19 @@ with tab4:
                     with col3:
                         st.subheader("Edit Entry")
                         
-                        new_species = st.text_input("Edit Species", value=row.get('species', ''), key=f"edit_sp_{entry_id}")
-                        new_length = st.slider("Edit Length (Inches)", 0.0, 40.0, float(row.get('length', 15.0)), 0.5, key=f"edit_len_{entry_id}")
-                        new_lure = st.text_input("Edit Lure", value=row.get('lure', ''), key=f"edit_lure_{entry_id}")
+                        current_species = str(row.get('species') or 'Snook')
+                        current_length = float(row.get('length') or 15.0)
+                        current_lure = str(row.get('lure') or '')
+
+                        new_species = st.text_input("Edit Species", value=current_species, key=f"edit_sp_{entry_id}")
+                        new_length = st.slider("Edit Length (Inches)", 0.0, 40.0, current_length, 0.5, key=f"edit_len_{entry_id}")
+                        new_lure = st.text_input("Edit Lure", value=current_lure, key=f"edit_lure_{entry_id}")
                         
                         new_image_file = st.file_uploader("Change Catch Image", type=["jpg", "jpeg", "png"], key=f"edit_img_{entry_id}")
                         
                         if st.button("Save Changes", key=f"save_edit_{entry_id}"):
                             for c in catches:
-                                target_id = c.get("id") or f"row_{catches.index(c)}"
+                                target_id = str(c.get("id") or f"row_{catches.index(c)}")
                                 if target_id == entry_id:
                                     c["species"] = new_species
                                     c["length"] = new_length
@@ -510,7 +511,7 @@ with tab4:
                             col_yes, col_no = st.columns(2)
                             with col_yes:
                                 if st.button("Yes", key=f"yes_del_{entry_id}", type="primary"):
-                                    updated_catches = [c for i, c in enumerate(catches) if (c.get("id") or f"row_{i}") != entry_id]
+                                    updated_catches = [c for i, c in enumerate(catches) if str(c.get("id") or f"row_{i}") != entry_id]
                                     save_json(DB_FILE, updated_catches)
                                     st.success("Entry deleted!")
                                     st.rerun()
@@ -520,7 +521,7 @@ with tab4:
                                     st.rerun()
         else:
             for idx, row in filtered_df.iterrows():
-                entry_id = row.get("id") or f"card_{idx}"
+                entry_id = str(row.get("id") or f"card_{idx}")
                 
                 dt_str = row.get('formatted_datetime', '')
                 if not dt_str:
@@ -550,7 +551,7 @@ with tab4:
                         col_yes, col_no = st.columns(2)
                         with col_yes:
                             if st.button("Yes", key=f"yes_del_card_{entry_id}", type="primary"):
-                                updated_catches = [c for i, c in enumerate(catches) if (c.get("id") or f"card_{i}") != entry_id]
+                                updated_catches = [c for i, c in enumerate(catches) if str(c.get("id") or f"card_{i}") != entry_id]
                                 save_json(DB_FILE, updated_catches)
                                 st.success("Entry deleted!")
                                 st.rerun()
