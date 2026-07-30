@@ -407,7 +407,7 @@ def recognize_fish_and_lure(image_file, lures):
     try:
         img = Image.open(image_file).convert('RGB')
         img_resized = img.resize((30, 30))
-        target_pixels = list(img_resized.getdata() if hasattr(img_resized, 'getdata') else img_resized.getdata())
+        target_pixels = list(img_resized.getdata())
         target_r = sum(p[0] for p in target_pixels) / len(target_pixels)
         target_g = sum(p[1] for p in target_pixels) / len(target_pixels)
         target_b = sum(p[2] for p in target_pixels) / len(target_pixels)
@@ -421,7 +421,7 @@ def recognize_fish_and_lure(image_file, lures):
                 if sample_path and os.path.exists(sample_path):
                     try:
                         s_img = Image.open(sample_path).convert('RGB').resize((30, 30))
-                        s_pixels = list(s_img.getdata() if hasattr(s_img, 'getdata') else s_img.getdata())
+                        s_pixels = list(s_img.getdata())
                         s_r = sum(p[0] for p in s_pixels) / len(s_pixels)
                         s_g = sum(p[1] for p in s_pixels) / len(s_pixels)
                         s_b = sum(p[2] for p in s_pixels) / len(s_pixels)
@@ -488,11 +488,9 @@ with tab1:
             log_time = st.time_input("Time (AM/PM)", value=dt.time(), key="c_time")
 
         st.write("📍 **Catch Location:**")
-        # Default coordinates (hidden inputs used for backend preservation)
         manual_lat = 28.39
         manual_lon = float(lon) if lon else -80.60
         
-        # Thumbnail map with custom fish marker icon
         m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="250px")
         fish_icon = folium.CustomIcon(
             icon_image="https://cdn-icons-png.flaticon.com/512/2932/2932454.png",
@@ -570,7 +568,7 @@ with tab2:
     catches = load_catches()
     if catches:
         filtered_df = get_filtered_catches_df(catches, prefix="map_tab")
-        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
+        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude"] is not None and r.get("longitude") is not None]
         if valid:
             m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11)
             fish_icon = folium.CustomIcon(
@@ -849,8 +847,37 @@ if admin_tab:
 if recognition_tab:
     with recognition_tab:
         st.header("🧬 Fish Recognition Accuracy Library")
-        st.write("Review and manage reference sample images used by the heuristic model to improve species identification accuracy.")
+        st.write("Review, manage, and add reference sample images used by the heuristic model to improve species identification accuracy.")
         
+        # Form to manually add new fish recognition reference images
+        with st.form("add_recognition_sample_form", clear_on_submit=True):
+            st.subheader("➕ Add New Recognition Reference Sample")
+            new_sample_species = st.text_input("Fish Species Name")
+            new_sample_file = st.file_uploader("Upload Reference Image", type=["jpg", "jpeg", "png"])
+            submit_sample = st.form_submit_button("Add to Recognition Library", type="primary")
+            
+            if submit_sample:
+                if new_sample_species and new_sample_file:
+                    img_filename = f"sample_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                    img_path = os.path.join(SPECIES_SAMPLES_DIR, img_filename)
+                    process_image_orientation(new_sample_file).save(img_path, optimize=True, quality=80)
+                    
+                    samples = load_species_samples()
+                    samples.append({
+                        "id": str(uuid.uuid4()),
+                        "user_id": user["id"],
+                        "catch_id": "manual_admin_upload",
+                        "species": new_sample_species,
+                        "image_path": img_path
+                    })
+                    save_species_samples_table(samples)
+                    st.success("New reference sample added successfully!")
+                    st.rerun()
+                else:
+                    st.error("Please provide both a species name and an image file.")
+
+        st.divider()
+        st.subheader("Existing Reference Samples")
         samples = load_species_samples()
         if samples:
             for s_idx, sample in enumerate(samples):
@@ -869,4 +896,4 @@ if recognition_tab:
                         st.rerun()
                 st.divider()
         else:
-            st.info("No reference samples collected yet. Users can contribute via Correctly ID'd checkbox when logging catches.")
+            st.info("No reference samples collected yet.")
