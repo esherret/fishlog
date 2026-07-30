@@ -408,4 +408,28 @@ with tab4:
 
         view_mode = st.radio("View Layout", ["Card View with Images", "Row-by-Row Table (No Images)"], horizontal=True)
 
-(Rest of file omitted for brevity, but full corrected script provided above)
+        if view_mode == "Row-by-Row Table (No Images)":
+            display_cols = ["date", "time", "species", "length", "lure", "weather", "wind_speed", "wind_direction", "tide", "moon_phase"]
+            available_display_cols = [col for col in display_cols if col in filtered_df.columns]
+            st.dataframe(filtered_df[available_display_cols], use_container_width=True)
+        else:
+            for _, row in filtered_df.iterrows():
+                col1, col2, col3 = st.columns([1, 2, 1])
+                with col1:
+                    img_p = row.get("image_path")
+                    if img_p and os.path.exists(img_p):
+                        st.image(img_p, width=180)
+                with col2:
+                    st.write(f"**Species:** {row.get('species', 'N/A')} ({row.get('length', 0)} inches)")
+                    st.write(f"**Date/Time:** {row.get('formatted_datetime', str(row.get('date', '')) + ' ' + str(row.get('time', '')))}")
+                    st.write(f"**Lure:** {row.get('lure', 'N/A')}")
+                    st.write(f"**Weather:** {row.get('weather', 'N/A')} | **Wind:** {row.get('wind_speed', 'N/A')} {row.get('wind_direction', 'N/A')}")
+                    st.write(f"**Tide:** {row.get('tide', 'N/A')} | **Moon:** {row.get('moon_phase', 'N/A')}")
+                with col3:
+                    entry_id = row.get("id")
+                    if entry_id and st.button("Delete", key=f"del_{entry_id}"):
+                        updated_catches = [c for c in catches if c.get("id") != entry_id]
+                        save_json(DB_FILE, updated_catches)
+                        st.success("Entry deleted!")
+                        st.rerun()
+                st.divider()
