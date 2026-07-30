@@ -47,11 +47,9 @@ def process_image_orientation(image_file, rotation_angle=0):
     except Exception:
         image = Image.open(image_file)
     
-    # Convert RGBA/P images to RGB so they can be saved as JPEGs without errors
     if image.mode in ("RGBA", "P"):
         image = image.convert("RGB")
     
-    # Aggressively downscale to 800x800 max for instant rendering and zero lag
     image.thumbnail((800, 800))
     
     if rotation_angle != 0:
@@ -365,7 +363,15 @@ with tab1:
 
             catches.append(record)
             save_json(DB_FILE, catches)
-            st.success("Catch successfully logged!")
+            
+            # Clear cache and state to reset form for the next fish
+            if "selected_lure_cache" in st.session_state:
+                del st.session_state.selected_lure_cache
+            if "picking_lure_visual" in st.session_state:
+                del st.session_state.picking_lure_visual
+                
+            st.success("Catch successfully logged! Ready for next fish.")
+            st.rerun()
 
 
 # --- TAB 2: CATCH MAP ---
