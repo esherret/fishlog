@@ -223,7 +223,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["🎣 Log a Catch", "🗺️ Catch Map", "🧩
 with tab1:
     st.header("Log a New Catch")
 
-    upload_method = st.radio("Input Method", ["Camera", "Gallery Upload"], horizontal=True, key="upload_method_radio")
+    upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, index=0, key="upload_method_radio")
     
     catch_image_file = None
     if upload_method == "Camera":
@@ -364,7 +364,6 @@ with tab1:
             catches.append(record)
             save_json(DB_FILE, catches)
             
-            # Clear state to reset form and ensure a completely blank screen for the next fish
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
                 
