@@ -488,12 +488,19 @@ with tab1:
             log_time = st.time_input("Time (AM/PM)", value=dt.time(), key="c_time")
 
         st.write("📍 **Catch Location:**")
-        manual_lat = st.number_input("Latitude", value=28.39, format="%.6f", key="c_lat")
-        manual_lon = st.number_input("Longitude", value=float(lon) if lon else -80.60, format="%.6f", key="catch_lon_input")
+        # Default coordinates (hidden inputs used for backend preservation)
+        manual_lat = 28.39
+        manual_lon = float(lon) if lon else -80.60
         
-        m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="200px")
-        folium.Marker(location=[manual_lat, manual_lon], popup="Catch Location").add_to(m_thumb)
-        st_folium(m_thumb, width=700, height=200, key="thumb_map")
+        # Thumbnail map with custom fish marker icon
+        m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="250px")
+        fish_icon = folium.CustomIcon(
+            icon_image="https://cdn-icons-png.flaticon.com/512/2932/2932454.png",
+            icon_size=(32, 32),
+            icon_anchor=(16, 16)
+        )
+        folium.Marker(location=[manual_lat, manual_lon], popup="Catch Location", icon=fish_icon).add_to(m_thumb)
+        st_folium(m_thumb, width=700, height=250, key="thumb_map")
 
         combined_dt = datetime.combine(log_date, log_time)
         formatted_dt_str = combined_dt.strftime("%m/%d/%Y %I:%M %p")
@@ -566,8 +573,13 @@ with tab2:
         valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
         if valid:
             m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11)
+            fish_icon = folium.CustomIcon(
+                icon_image="https://cdn-icons-png.flaticon.com/512/2932/2932454.png",
+                icon_size=(32, 32),
+                icon_anchor=(16, 16)
+            )
             for c in valid:
-                folium.Marker(location=[float(c["latitude"]), float(c["longitude"])], popup=f"{c['species']} ({c['length']} in)").add_to(m)
+                folium.Marker(location=[float(c["latitude"]), float(c["longitude"])], popup=f"{c['species']} ({c['length']} in)", icon=fish_icon).add_to(m)
             st_folium(m, width=700, height=500)
         else:
             st.info("No mapped catches match filters.")
