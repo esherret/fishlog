@@ -5,8 +5,7 @@ import requests
 import streamlit as st
 from streamlit_folium import st_folium
 import folium
-import gspread
-from google.oauth2.service_account import Credentials
+from supabase import create_client, Client
 from PIL import Image, ImageOps
 
 # Configure page
@@ -56,7 +55,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Directory setup for local image caching (metadata is synced to Google Sheets)
+# Directory setup for local image caching
 DATA_DIR = "data"
 LURES_DIR = os.path.join(DATA_DIR, "lures")
 CATCHES_DIR = os.path.join(DATA_DIR, "catches")
@@ -65,89 +64,69 @@ for d in [DATA_DIR, LURES_DIR, CATCHES_DIR]:
     os.makedirs(d, exist_ok=True)
 
 
-# Google Sheets Connection Helper using TOML multiline literal string parsing
-def get_gspread_client():
+# Supabase Connection Helper
+def get_supabase_client() -> Client:
     try:
-        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-        credentials_dict = dict(st.secrets["gcp_service_account"])
-        creds = Credentials.from_service_account_info(credentials_dict, scopes=scope)
-        client = gspread.authorize(creds)
-        return client
+        url = st.secrets["SUPABASE_URL"]
+        key = st.secrets["SUPABASE_KEY"]
+        return create_client(url, key)
     except Exception as e:
-        st.error(f"Failed to connect to Google Sheets via secrets: {e}")
+        st.error(f"Failed to connect to Supabase via secrets: {e}")
         return None
 
 
-def init_sheet(sheet_name, headers):
-    client = get_gspread_client()
+# Helper: Load data from Supabase
+def load_supabase_data(table_name):
+    client = get_supabase_client()
     if not client:
-        return None
-    try:
-        spreadsheet = client.open(sheet_name)
-        worksheet = spreadsheet.get_worksheet(0)
-    except Exception:
-        try:
-            spreadsheet = client.create(sheet_name)
-            worksheet = spreadsheet.get_worksheet(0)
-            worksheet.append_row(headers)
-        except Exception as err:
-            st.error(f"Could not open or create Google Sheet '{sheet_name}': {err}")
-            return None
-    return worksheet
-
-
-# Helper: Load/Save data from Google Sheets
-def load_sheet_data(sheet_name, headers):
-    worksheet = init_sheet(sheet_name, headers)
-    if not worksheet:
         return []
     try:
-        records = worksheet.get_all_records()
-        return records
-    except Exception:
+        response = client.table(table_name).select("*").execute()
+        return response.data if response.data else []
+    except Exception as e:
+        # If table doesn't exist yet, return empty list safely
         return []
 
 
-def save_sheet_data(sheet_name, headers, data_list):
-    worksheet = init_sheet(sheet_name, headers)
-    if not worksheet:
+# Helper: Save / Overwrite data to Supabase table
+def save_supabase_data(table_name, data_list):
+    client = get_supabase_client()
+    if not client:
         return
     try:
-        worksheet.clear()
-        worksheet.append_row(headers)
-        for item in data_list:
-            row_values = [str(item.get(h, "")) for h in headers]
-            worksheet.append_row(row_values)
+        # Clear table and insert fresh list
+        client.table(table_name).delete().neq("id", "0").execute()
+        if data_list:
+            # Clean items for insertion
+            cleaned_data = []
+            for item in data_list:
+                row = {str(k): (str(v) if v is not None else "") for k, v in item.items()}
+                # Ensure id is present
+                if "id" not in row or not row["id"]:
+                    row["id"] = datetime.now().strftime("%Y%m%d%H%M%S%f")
+                cleaned_data.append(row)
+            client.table(table_name).insert(cleaned_data).execute()
     except Exception as e:
-        st.error(f"Error saving to Google Sheet: {e}")
-
-
-CATCH_HEADERS = [
-    "id", "date", "time", "formatted_datetime", "latitude", "longitude", 
-    "species", "length", "lure", "weather", "wind_speed", "wind_direction", 
-    "tide", "moon_phase", "image_path"
-]
-
-LURE_HEADERS = ["name", "image_path"]
+        st.error(f"Error saving to Supabase table '{table_name}': {e}")
 
 
 def load_catches():
-    return load_sheet_data("FishLog", CATCH_HEADERS)
+    return load_supabase_data("catches")
 
 
 def save_catches(catches):
-    save_sheet_data("FishLog", CATCH_HEADERS, catches)
+    save_supabase_data("catches", catches)
 
 
 def load_lures():
-    return load_sheet_data("FishLog_Lures", LURE_HEADERS)
+    return load_supabase_data("lures")
 
 
 def save_lures(lures):
-    save_sheet_data("FishLog_Lures", LURE_HEADERS, lures)
+    save_supabase_data("lures", lures)
 
 
-# Helper: Ultra-fast image compression and downscaling to eliminate upload lag & convert RGBA to RGB for JPEGs
+# Helper: Ultra-fast image compression and downscaling
 def process_image_orientation(image_file, rotation_angle=0):
     try:
         image = Image.open(image_file)
@@ -548,8 +527,8 @@ with tab2:
         valid_catches = [row.to_dict() for _, row in filtered_df.iterrows() if row.get("latitude") is not None and row.get("longitude") is not None]
         
         if valid_catches:
-            avg_lat = sum(c["latitude"] for c in valid_catches) / len(valid_catches)
-            avg_lon = sum(c["longitude"] for c in valid_catches) / len(valid_catches)
+            avg_lat = sum(float(c["latitude"]) for c in valid_catches if c.get("latitude") is not None) / len(valid_catches)
+            avg_lon = sum(float(c["longitude"]) for c in valid_catches if c.get("longitude") is not None) / len(valid_catches)
 
             m = folium.Map(
                 location=[avg_lat, avg_lon], 
@@ -589,7 +568,7 @@ with tab2:
                 fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue")
 
                 folium.Marker(
-                    location=[c["latitude"], c["longitude"]],
+                    location=[float(c["latitude"]), float(c["longitude"])],
                     popup=folium.Popup(popup_html, max_width=250),
                     icon=fish_icon
                 ).add_to(m)
