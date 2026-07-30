@@ -392,7 +392,11 @@ with tab2:
                 img_tag = ""
                 img_p = c.get("image_path", "")
                 if img_p and os.path.exists(img_p):
-                    img_tag = f'<img src="app/static/{img_p}" width="150px" style="border-radius:5px; margin-bottom:5px;"/><br>'
+                    # Base64 embed the image directly into the popup HTML to prevent path-resolution issues in Folium IFrames
+                    import base64
+                    with open(img_p, "rb") as img_file:
+                        encoded_img = base64.b64encode(img_file.read()).decode("utf-8")
+                        img_tag = f'<img src="data:image/jpeg;base64,{encoded_img}" width="150px" style="border-radius:5px; margin-bottom:5px;"/><br>'
                 
                 dt_disp = c.get('formatted_datetime')
                 if not dt_disp:
