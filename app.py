@@ -8,6 +8,8 @@ import requests
 import streamlit as st
 from streamlit_folium import st_folium
 import folium
+import gspread
+from google.oauth2.service_account import Credentials
 
 # Configure page
 st.set_page_config(page_title="Fish Catch Log", page_icon="🎣", layout="wide")
@@ -56,31 +58,95 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Directory setup for persistent storage
+# Directory setup for local image caching (metadata is synced to Google Sheets)
 DATA_DIR = "data"
 LURES_DIR = os.path.join(DATA_DIR, "lures")
 CATCHES_DIR = os.path.join(DATA_DIR, "catches")
-DB_FILE = os.path.join(DATA_DIR, "catches.json")
-LURES_FILE = os.path.join(DATA_DIR, "lures.json")
 
 for d in [DATA_DIR, LURES_DIR, CATCHES_DIR]:
     os.makedirs(d, exist_ok=True)
 
 
-# Helper: Load/Save JSON data
-def load_json(filepath):
-    if os.path.exists(filepath):
-        with open(filepath, "r") as f:
-            try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                return []
-    return []
+# Google Sheets Connection Helper using st.secrets
+def get_gspread_client():
+    try:
+        scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        credentials_dict = dict(st.secrets["gcp_service_account"])
+        creds = Credentials.from_service_account_info(credentials_dict, scopes=scope)
+        client = gspread.authorize(creds)
+        return client
+    except Exception as e:
+        st.error(f"Failed to connect to Google Sheets via secrets: {e}")
+        return None
 
 
-def save_json(filepath, data):
-    with open(filepath, "w") as f:
-        json.dump(data, f, indent=4)
+def init_sheet(sheet_name, headers):
+    client = get_gspread_client()
+    if not client:
+        return None
+    try:
+        spreadsheet = client.open(sheet_name)
+        worksheet = spreadsheet.get_worksheet(0)
+    except Exception:
+        try:
+            spreadsheet = client.create(sheet_name)
+            worksheet = spreadsheet.get_worksheet(0)
+            worksheet.append_row(headers)
+        except Exception as err:
+            st.error(f"Could not open or create Google Sheet '{sheet_name}': {err}")
+            return None
+    return worksheet
+
+
+# Helper: Load/Save data from Google Sheets
+def load_sheet_data(sheet_name, headers):
+    worksheet = init_sheet(sheet_name, headers)
+    if not worksheet:
+        return []
+    try:
+        records = worksheet.get_all_records()
+        return records
+    except Exception:
+        return []
+
+
+def save_sheet_data(sheet_name, headers, data_list):
+    worksheet = init_sheet(sheet_name, headers)
+    if not worksheet:
+        return
+    try:
+        worksheet.clear()
+        worksheet.append_row(headers)
+        for item in data_list:
+            row_values = [str(item.get(h, "")) for h in headers]
+            worksheet.append_row(row_values)
+    except Exception as e:
+        st.error(f"Error saving to Google Sheet: {e}")
+
+
+CATCH_HEADERS = [
+    "id", "date", "time", "formatted_datetime", "latitude", "longitude", 
+    "species", "length", "lure", "weather", "wind_speed", "wind_direction", 
+    "tide", "moon_phase", "image_path"
+]
+
+LURE_HEADERS = ["name", "image_path"]
+
+
+def load_catches():
+    return load_sheet_data("FishLog", CATCH_HEADERS)
+
+
+def save_catches(catches):
+    save_sheet_data("FishLog", CATCH_HEADERS, catches)
+
+
+def load_lures():
+    return load_sheet_data("FishLog_Lures", LURE_HEADERS)
+
+
+def save_lures(lures):
+    save_sheet_data("FishLog_Lures", LURE_HEADERS, lures)
 
 
 # Helper: Ultra-fast image compression and downscaling to eliminate upload lag & convert RGBA to RGB for JPEGs
@@ -268,6 +334,14 @@ def get_filtered_catches_df(catches, prefix="global"):
     df = pd.DataFrame(catches)
     if "tide" not in df.columns:
         df["tide"] = "N/A"
+    
+    # Ensure numeric columns are properly typed
+    if "length" in df.columns:
+        df["length"] = pd.to_numeric(df["length"], errors="coerce").fillna(0.0)
+    if "latitude" in df.columns:
+        df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
+    if "longitude" in df.columns:
+        df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
 
     st.sidebar.header("Filter Log Entries & Map")
     species_list = ["All"] + list(df["species"].unique()) if "species" in df.columns else ["All"]
@@ -351,11 +425,11 @@ with tab1:
         formatted_datetime_str = combined_dt.strftime("%m/%d/%Y %I:%M %p")
         st.write(f"**Logged Timestamp:** {formatted_datetime_str}")
 
-        catches = load_json(DB_FILE)
+        catches = load_catches()
         is_duplicate = False
         for c in catches:
             try:
-                existing_dt = datetime.strptime(f"{c['date']} {c['time']}", "%Y-%m-%d %H:%M:%S")
+                existing_dt = datetime.strptime(f"{c.get('date')} {c.get('time')}", "%Y-%m-%d %H:%M:%S")
                 if abs((combined_dt - existing_dt).total_seconds()) <= 180:
                     is_duplicate = True
                     break
@@ -371,7 +445,7 @@ with tab1:
 
         st.info(f"🌤️ **Weather:** {weather_desc} | 💨 **Wind:** {wind_speed_str} {wind_dir} | 🌊 **Tide:** {tide_info} | 🌙 **Moon:** {moon_phase}")
 
-        lures = load_json(LURES_FILE)
+        lures = load_lures()
         rec_species, rec_lure = recognize_fish_and_lure(catch_image_file, lures)
 
         species = st.text_input("Fish Species", value=rec_species, key="catch_species_input")
@@ -389,7 +463,8 @@ with tab1:
             st.write(f"**Current Lure:** {st.session_state.selected_lure_cache if st.session_state.selected_lure_cache else 'None selected'}")
             for l in lures:
                 if l["name"] == st.session_state.selected_lure_cache:
-                    st.image(l["image_path"], width=100, caption=l["name"])
+                    if os.path.exists(l.get("image_path", "")):
+                        st.image(l["image_path"], width=100, caption=l["name"])
         with col_lure2:
             if st.button("🖼️ Browse All Lures", key="browse_lures_btn"):
                 st.session_state.picking_lure_visual = True
@@ -429,7 +504,7 @@ with tab1:
                     proc_lure_img.save(lure_img_path, optimize=True, quality=80)
                     
                     lures.append({"name": new_lure_name, "image_path": lure_img_path})
-                    save_json(LURES_FILE, lures)
+                    save_lures(lures)
                     st.session_state.selected_lure_cache = new_lure_name
                     st.success(f"Added and selected: {new_lure_name}")
                     st.rerun()
@@ -462,7 +537,7 @@ with tab1:
             }
 
             catches.append(record)
-            save_json(DB_FILE, catches)
+            save_catches(catches)
             
             # Clear all session state variables related to input and uploading to return to a blank form
             for key in list(st.session_state.keys()):
@@ -475,7 +550,7 @@ with tab1:
 # --- TAB 2: CATCH MAP ---
 with tab2:
     st.header("Catch Location Map")
-    catches = load_json(DB_FILE)
+    catches = load_catches()
     if catches:
         filtered_df = get_filtered_catches_df(catches, prefix="map_tab")
         valid_catches = [row.to_dict() for _, row in filtered_df.iterrows() if row.get("latitude") is not None and row.get("longitude") is not None]
@@ -549,14 +624,14 @@ with tab3:
             proc_lure_img = process_image_orientation(lure_image)
             proc_lure_img.save(img_path, optimize=True, quality=80)
                 
-            lures = load_json(LURES_FILE)
+            lures = load_lures()
             lures.append({"name": lure_name, "image_path": img_path})
-            save_json(LURES_FILE, lures)
+            save_lures(lures)
             st.success(f"Added lure: {lure_name}")
             st.rerun()
 
     st.subheader("Your Lures")
-    lures = load_json(LURES_FILE)
+    lures = load_lures()
     if lures:
         cols = st.columns(2)
         for idx, lure in enumerate(lures):
@@ -581,7 +656,7 @@ with tab3:
                                 proc_img = process_image_orientation(new_lure_img)
                                 proc_img.save(img_path, optimize=True, quality=80)
                                 lure["image_path"] = img_path
-                            save_json(LURES_FILE, lures)
+                            save_lures(lures)
                             st.success("Lure updated!")
                             st.rerun()
 
@@ -594,7 +669,7 @@ with tab3:
                             with col_yes:
                                 if st.button("Yes", key=f"yes_del_lure_{idx}", type="primary"):
                                     updated_lures = [l for i, l in enumerate(lures) if i != idx]
-                                    save_json(LURES_FILE, updated_lures)
+                                    save_lures(updated_lures)
                                     st.success("Deleted!")
                                     st.rerun()
                             with col_no:
@@ -608,7 +683,7 @@ with tab3:
 # --- TAB 4: HISTORY & ANALYTICS ---
 with tab4:
     st.header("Catch History, Filtering & Management")
-    catches = load_json(DB_FILE)
+    catches = load_catches()
     
     if not catches:
         st.info("No catches logged yet.")
@@ -665,9 +740,9 @@ with tab4:
                         new_image_file = st.file_uploader("Change Catch Image", type=["jpg", "jpeg", "png"], key=f"edit_img_{entry_key}")
                         
                         if st.button("Save Changes", key=f"save_edit_{entry_key}"):
-                            all_catches = load_json(DB_FILE)
+                            all_catches = load_catches()
                             for c in all_catches:
-                                if c.get("date") == record_date and c.get("time") == record_time and c.get("latitude") == record_lat and c.get("longitude") == record_lon:
+                                if str(c.get("date")) == str(record_date) and str(c.get("time")) == str(record_time) and str(c.get("latitude")) == str(record_lat) and str(c.get("longitude")) == str(record_lon):
                                     c["species"] = new_species
                                     c["length"] = new_length
                                     c["lure"] = new_lure
@@ -677,7 +752,7 @@ with tab4:
                                         proc_img = process_image_orientation(new_image_file)
                                         proc_img.save(img_path, optimize=True, quality=80)
                                         c["image_path"] = img_path
-                            save_json(DB_FILE, all_catches)
+                            save_catches(all_catches)
                             st.success("Entry updated successfully!")
                             st.rerun()
 
@@ -693,19 +768,19 @@ with tab4:
                             col_yes, col_no = st.columns(2)
                             with col_yes:
                                 if st.button("Yes", key=f"yes_del_{entry_key}", type="primary"):
-                                    all_catches = load_json(DB_FILE)
+                                    all_catches = load_catches()
                                     updated_catches = []
                                     for c in all_catches:
                                         match = (
-                                            c.get("date") == record_date and 
-                                            c.get("time") == record_time and 
-                                            c.get("latitude") == record_lat and 
-                                            c.get("longitude") == record_lon
+                                            str(c.get("date")) == str(record_date) and 
+                                            str(c.get("time")) == str(record_time) and 
+                                            str(c.get("latitude")) == str(record_lat) and 
+                                            str(c.get("longitude")) == str(record_lon)
                                         )
                                         if not match:
                                             updated_catches.append(c)
 
-                                    save_json(DB_FILE, updated_catches)
+                                    save_catches(updated_catches)
                                     st.session_state[confirm_key] = False
                                     st.success("Entry deleted!")
                                     st.rerun()
@@ -754,19 +829,19 @@ with tab4:
                         col_yes, col_no = st.columns(2)
                         with col_yes:
                             if st.button("Yes", key=f"yes_del_card_{entry_key}", type="primary"):
-                                all_catches = load_json(DB_FILE)
+                                all_catches = load_catches()
                                 updated_catches = []
                                 for c in all_catches:
                                     match = (
-                                        c.get("date") == record_date and 
-                                        c.get("time") == record_time and 
-                                        c.get("latitude") == record_lat and 
-                                        c.get("longitude") == record_lon
+                                        str(c.get("date")) == str(record_date) and 
+                                        str(c.get("time")) == str(record_time) and 
+                                        str(c.get("latitude")) == str(record_lat) and 
+                                        str(c.get("longitude")) == str(record_lon)
                                     )
                                     if not match:
                                         updated_catches.append(c)
                                         
-                                save_json(DB_FILE, updated_catches)
+                                save_catches(updated_catches)
                                 st.session_state[confirm_card_key] = False
                                 st.success("Entry deleted!")
                                 st.rerun()
