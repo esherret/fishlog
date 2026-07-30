@@ -464,6 +464,7 @@ with tab1:
             catches.append(record)
             save_json(DB_FILE, catches)
             
+            # Clear all session state variables related to input and uploading to return to a blank form
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
                 
@@ -620,8 +621,6 @@ with tab4:
             st.write("Click on any entry below to view its card, edit details, or delete it.")
             
             for idx, row in filtered_df.iterrows():
-                # Identify exact record index in master list by matching unique criteria (date, time, latitude, longitude)
-                # This bypasses any DataFrame iteration index misalignment or missing ID keys.
                 record_id = row.get("id")
                 record_date = row.get("date")
                 record_time = row.get("time")
@@ -695,18 +694,6 @@ with tab4:
                             with col_yes:
                                 if st.button("Yes", key=f"yes_del_{entry_key}", type="primary"):
                                     all_catches = load_json(DB_FILE)
-                                    
-                                    # Filter out the exact matching record safely
-                                    updated_catches = [
-                                        c for c in all_catches 
-                                        not in (
-                                            c.get("date") == record_date and 
-                                            c.get("time") == record_time and 
-                                            c.get("latitude") == record_lat and 
-                                            c.get("longitude") == record_lon
-                                        )
-                                    ] if False else [] # Safe guard below
-                                    
                                     updated_catches = []
                                     for c in all_catches:
                                         match = (
@@ -768,7 +755,6 @@ with tab4:
                         with col_yes:
                             if st.button("Yes", key=f"yes_del_card_{entry_key}", type="primary"):
                                 all_catches = load_json(DB_FILE)
-                                
                                 updated_catches = []
                                 for c in all_catches:
                                     match = (
