@@ -59,8 +59,9 @@ st.markdown("""
 DATA_DIR = "data"
 LURES_DIR = os.path.join(DATA_DIR, "lures")
 CATCHES_DIR = os.path.join(DATA_DIR, "catches")
+SPECIES_SAMPLES_DIR = os.path.join(DATA_DIR, "species_samples")
 
-for d in [DATA_DIR, LURES_DIR, CATCHES_DIR]:
+for d in [DATA_DIR, LURES_DIR, CATCHES_DIR, SPECIES_SAMPLES_DIR]:
     os.makedirs(d, exist_ok=True)
 
 
@@ -98,7 +99,6 @@ def register_user(first_name, last_name, email, password, zip_code, make_admin=F
     user_id = str(uuid.uuid4())
     salt = bcrypt.gensalt()
     pwd_hash = bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
-    
     is_admin = make_admin or (len(users) == 0)
 
     try:
@@ -155,6 +155,7 @@ def admin_delete_user(user_id):
     try:
         client.table("catches").delete().eq("user_id", user_id).execute()
         client.table("lures").delete().eq("user_id", user_id).execute()
+        client.table("species_samples").delete().eq("user_id", user_id).execute()
         client.table("users").delete().eq("id", user_id).execute()
         return True, "User deleted successfully."
     except Exception as e:
@@ -223,6 +224,29 @@ def save_lures(lures):
     save_user_data("lures", lures)
 
 
+# Global Species Sample Reference Library (Shared across users for recognition accuracy)
+def load_species_samples():
+    client = get_supabase_client()
+    if not client:
+        return []
+    try:
+        res = client.table("species_samples").select("*").execute()
+        return res.data if res.data else []
+    except Exception:
+        return []
+
+def save_species_samples_table(samples_list):
+    client = get_supabase_client()
+    if not client:
+        return
+    try:
+        client.table("species_samples").delete().neq("id", "0").execute()
+        if samples_list:
+            client.table("species_samples").insert(samples_list).execute()
+    except Exception as e:
+        st.error(f"Error saving species samples: {e}")
+
+
 # --- LOGIN / REGISTRATION UI ---
 if not st.session_state.current_user:
     st.title("🎣 Fish Catch Log - Login")
@@ -285,10 +309,12 @@ if st.sidebar.button("🚪 Sign Out"):
 tab_names = ["🎣 Log a Catch", "🗺️ Catch Map", "🧩 Manage Lures", "📊 History & Analytics"]
 if user.get("is_admin"):
     tab_names.append("🛡️ User Management")
+    tab_names.append("🧬 Fish Recognition Library")
 
 tabs = st.tabs(tab_names)
 tab1, tab2, tab3, tab4 = tabs[0], tabs[1], tabs[2], tabs[3]
 admin_tab = tabs[4] if user.get("is_admin") else None
+recognition_tab = tabs[5] if user.get("is_admin") and len(tabs) > 5 else None
 
 
 # Helper functions for app processing
@@ -363,8 +389,44 @@ def get_moon_phase(dt):
     else: return "Waning Crescent"
 
 
+# Enhanced recognition using uploaded accuracy reference samples via color distance heuristic
 def recognize_fish_and_lure(image_file, lures):
-    detected_species = "Snook"
+    try:
+        img = Image.open(image_file).convert('RGB').resize((30, 30))
+        target_pixels = list(img.getdata())
+        target_r = sum(p[0] for p in target_pixels) / len(target_pixels)
+        target_g = sum(p[1] for p in target_pixels) / len(target_pixels)
+        target_b = sum(p[2] for p in target_pixels) / len(target_pixels)
+
+        samples = load_species_samples()
+        if samples:
+            best_match = None
+            min_diff = float('inf')
+            for sample in samples:
+                sample_path = sample.get("image_path")
+                if sample_path and os.path.exists(sample_path):
+                    try:
+                        s_img = Image.open(sample_path).convert('RGB').resize((30, 30))
+                        s_pixels = list(s_img.getdata())
+                        s_r = sum(p[0] for p in s_pixels) / len(s_pixels)
+                        s_g = sum(p[1] for p in s_pixels) / len(s_pixels)
+                        s_b = sum(p[2] for p in s_pixels) / len(s_pixels)
+                        
+                        diff = abs(target_r - s_r) + abs(target_g - s_g) + abs(target_b - s_b)
+                        if diff < min_diff:
+                            min_diff = diff
+                            best_match = sample.get("species")
+                    except Exception:
+                        continue
+            if best_match:
+                detected_species = best_match
+            else:
+                detected_species = "Snook"
+        else:
+            detected_species = "Snook"
+    except Exception:
+        detected_species = "Snook"
+
     detected_lure = lures[0]["name"] if lures else None
     return detected_species, detected_lure
 
@@ -425,14 +487,20 @@ with tab1:
         length = st.slider("Length (Inches)", 0.0, 40.0, 15.0, 0.5, key="c_len")
         selected_lure = st.selectbox("Lure Used", [l["name"] for l in lures] if lures else ["None"], key="c_lure")
 
+        # Thumbs up accuracy improvement integration linked directly to this catch entry
+        st.markdown("---")
+        st.write("👍 **Did our system correctly identify this fish?** Click thumbs up to add it to our recognition accuracy library!")
+        is_thumbs_up = st.checkbox("👍 Thumbs Up (Correct ID)", key="thumbs_up_check")
+
         if st.button("Save Catch Entry", type="primary"):
             img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
             img_path = os.path.join(CATCHES_DIR, img_filename)
             processed_image.save(img_path, optimize=True, quality=80)
 
+            catch_id = str(uuid.uuid4())
             catches = load_catches()
             catches.append({
-                "id": str(uuid.uuid4()),
+                "id": catch_id,
                 "date": log_date.strftime("%Y-%m-%d"),
                 "time": log_time.strftime("%H:%M:%S"),
                 "formatted_datetime": formatted_dt_str,
@@ -449,6 +517,19 @@ with tab1:
                 "image_path": img_path
             })
             save_catches(catches)
+
+            # If thumbs up is checked, link this entry image directly to the accuracy recognition sample table
+            if is_thumbs_up:
+                samples = load_species_samples()
+                samples.append({
+                    "id": str(uuid.uuid4()),
+                    "user_id": user["id"],
+                    "catch_id": catch_id,
+                    "species": species,
+                    "image_path": img_path
+                })
+                save_species_samples_table(samples)
+
             st.success("Catch successfully logged!")
             st.rerun()
 
@@ -459,7 +540,7 @@ with tab2:
     catches = load_catches()
     if catches:
         filtered_df = get_filtered_catches_df(catches, prefix="map_tab")
-        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
+        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude"] is not None and r.get("longitude") is not None]
         if valid:
             m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11)
             for c in valid:
@@ -497,8 +578,21 @@ with tab4:
     catches = load_catches()
     if catches:
         filtered_df = get_filtered_catches_df(catches, prefix="hist_tab")
-        for _, row in filtered_df.iterrows():
+        for idx, row in filtered_df.iterrows():
             st.write(f"🐟 **{row.get('species')}** - {row.get('length')} inches on {row.get('formatted_datetime')}")
+            
+            # Allow removal/updating which automatically cascades updates to the accuracy sample table if linked
+            if st.button(f"Delete Catch ID {row.get('id')[:6]}", key=f"del_catch_{idx}"):
+                updated_catches = [c for c in catches if c.get("id") != row.get("id")]
+                save_catches(updated_catches)
+                
+                # Clean up corresponding recognition reference sample if present
+                samples = load_species_samples()
+                updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
+                save_species_samples_table(updated_samples)
+                
+                st.success("Catch deleted successfully!")
+                st.rerun()
     else:
         st.info("No history found.")
 
@@ -553,3 +647,30 @@ if admin_tab:
                                     st.error(f"Error: {msg}")
         else:
             st.info("No users registered.")
+
+
+# --- TAB 6: FISH RECOGNITION LIBRARY (ADMIN) ---
+if recognition_tab:
+    with recognition_tab:
+        st.header("🧬 Fish Recognition Accuracy Library")
+        st.write("Review and manage reference sample images used by the heuristic model to improve species identification accuracy.")
+        
+        samples = load_species_samples()
+        if samples:
+            for s_idx, sample in enumerate(samples):
+                col_img, col_info, col_act = st.columns([1, 2, 1])
+                with col_img:
+                    if os.path.exists(sample.get("image_path", "")):
+                        st.image(sample["image_path"], width=120)
+                with col_info:
+                    st.write(f"**Species:** {sample.get('species')}")
+                    st.write(f"**Sample ID:** {sample.get('id')[:6]}")
+                with col_act:
+                    if st.button("Delete Reference", key=f"del_sample_{s_idx}"):
+                        updated_samples = [s for s in samples if s.get("id") != sample.get("id")]
+                        save_species_samples_table(updated_samples)
+                        st.success("Reference sample removed!")
+                        st.rerun()
+                st.divider()
+        else:
+            st.info("No reference samples collected yet. Users can contribute via Thumbs Up when logging catches.")
