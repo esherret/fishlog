@@ -1,4 +1,6 @@
 import os
+import uuid
+import bcrypt
 from datetime import datetime, time
 import pandas as pd
 import requests
@@ -7,14 +9,17 @@ from streamlit_folium import st_folium
 import folium
 from supabase import create_client, Client
 from PIL import Image, ImageOps
+from streamlit_cookies_controller import CookieController
 
 # Configure page
 st.set_page_config(page_title="Fish Catch Log", page_icon="🎣", layout="wide")
 
-# Custom CSS for black slider thumbs, tracks, sidebar filter icon, and responsive mobile lure grid (exactly 2 per row)
+# Initialize persistent cookie controller
+controller = CookieController()
+
+# Custom CSS for black slider thumbs, tracks, sidebar filter icon, and responsive mobile lure grid
 st.markdown("""
 <style>
-    /* Slider track and thumb styling for black accent */
     .stSlider [data-baseweb="slider"] div[role="slider"] {
         background-color: #000000 !important;
         border-color: #000000 !important;
@@ -22,8 +27,6 @@ st.markdown("""
     .stSlider [data-baseweb="slider"] div > div > div > div {
         background-color: #000000 !important;
     }
-
-    /* Replace the sidebar collapse/expand double arrow with a filter icon when collapsed */
     [data-testid="collapsedControl"] svg {
         visibility: hidden;
     }
@@ -39,8 +42,6 @@ st.markdown("""
         width: 100%;
         height: 100%;
     }
-
-    /* Enforce 2 columns strictly on mobile viewports for the lure picker grid */
     @media (max-width: 768px) {
         div[data-testid="stHorizontalBlock"] {
             display: flex !important;
@@ -55,7 +56,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Directory setup for local image caching
 DATA_DIR = "data"
 LURES_DIR = os.path.join(DATA_DIR, "lures")
 CATCHES_DIR = os.path.join(DATA_DIR, "catches")
@@ -64,7 +64,6 @@ for d in [DATA_DIR, LURES_DIR, CATCHES_DIR]:
     os.makedirs(d, exist_ok=True)
 
 
-# Supabase Connection Helper
 def get_supabase_client() -> Client:
     try:
         url = st.secrets["SUPABASE_URL"]
@@ -75,130 +74,219 @@ def get_supabase_client() -> Client:
         return None
 
 
-# Helper: Load data from Supabase
-def load_supabase_data(table_name):
+# --- AUTHENTICATION & USER MANAGEMENT ---
+def get_all_users():
     client = get_supabase_client()
     if not client:
         return []
     try:
-        response = client.table(table_name).select("*").execute()
-        return response.data if response.data else []
-    except Exception as e:
-        # If table doesn't exist yet, return empty list safely
+        res = client.table("users").select("*").execute()
+        return res.data if res.data else []
+    except Exception:
         return []
 
 
-# Helper: Save / Overwrite data to Supabase table
-def save_supabase_data(table_name, data_list):
+def register_user(first_name, last_name, email, password, zip_code, make_admin=False):
     client = get_supabase_client()
     if not client:
+        return False, "Database connection error."
+    
+    users = get_all_users()
+    if any(u["email"].lower() == email.lower() for u in users):
+        return False, "An account with this email already exists."
+
+    user_id = str(uuid.uuid4())
+    salt = bcrypt.gensalt()
+    pwd_hash = bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
+    
+    is_admin = make_admin or (len(users) == 0) # First registered user becomes admin automatically
+
+    try:
+        client.table("users").insert({
+            "id": user_id,
+            "first_name": first_name,
+            "last_name": last_name,
+            "email": email.lower(),
+            "password_hash": pwd_hash,
+            "zip_code": zip_code,
+            "is_admin": is_admin
+        }).execute()
+        return True, user_id
+    except Exception as e:
+        return False, str(e)
+
+
+def authenticate_user(email, password):
+    client = get_supabase_client()
+    if not client:
+        return None
+    try:
+        res = client.table("users").select("*").eq("email", email.lower()).execute()
+        if res.data and len(res.data) > 0:
+            user = res.data[0]
+            if bcrypt.checkpw(password.encode("utf-8"), user["password_hash"].encode("utf-8")):
+                return user
+    except Exception:
+        pass
+    return None
+
+
+# Persistent Cookie Check for Auto-Login
+if "current_user" not in st.session_state:
+    st.session_state.current_user = None
+
+cookie_user_id = controller.get("fishlog_user_id")
+if cookie_user_id and not st.session_state.current_user:
+    client = get_supabase_client()
+    if client:
+        try:
+            res = client.table("users").select("*").eq("id", cookie_user_id).execute()
+            if res.data:
+                st.session_state.current_user = res.data[0]
+        except Exception:
+            pass
+
+
+# --- DATA LOAD / SAVE HELPERS (USER ISOLATED) ---
+def load_user_data(table_name):
+    client = get_supabase_client()
+    user = st.session_state.current_user
+    if not client or not user:
+        return []
+    try:
+        res = client.table(table_name).select("*").eq("user_id", user["id"]).execute()
+        return res.data if res.data else []
+    except Exception:
+        return []
+
+
+def save_user_data(table_name, data_list):
+    client = get_supabase_client()
+    user = st.session_state.current_user
+    if not client or not user:
         return
     try:
-        # Clear table and insert fresh list
-        client.table(table_name).delete().neq("id", "0").execute()
+        client.table(table_name).delete().eq("user_id", user["id"]).execute()
         if data_list:
-            # Clean items for insertion
             cleaned_data = []
             for item in data_list:
                 row = {str(k): (str(v) if v is not None else "") for k, v in item.items()}
-                # Ensure id is present
+                row["user_id"] = user["id"]
                 if "id" not in row or not row["id"]:
-                    row["id"] = datetime.now().strftime("%Y%m%d%H%M%S%f")
+                    row["id"] = str(uuid.uuid4())
                 cleaned_data.append(row)
             client.table(table_name).insert(cleaned_data).execute()
     except Exception as e:
-        st.error(f"Error saving to Supabase table '{table_name}': {e}")
+        st.error(f"Error saving data: {e}")
 
 
 def load_catches():
-    return load_supabase_data("catches")
-
+    return load_user_data("catches")
 
 def save_catches(catches):
-    save_supabase_data("catches", catches)
-
+    save_user_data("catches", catches)
 
 def load_lures():
-    return load_supabase_data("lures")
-
+    return load_user_data("lures")
 
 def save_lures(lures):
-    save_supabase_data("lures", lures)
+    save_user_data("lures", lures)
 
 
-# Helper: Ultra-fast image compression and downscaling
+# --- LOGIN / REGISTRATION UI ---
+if not st.session_state.current_user:
+    st.title("🎣 Fish Catch Log - Login")
+    auth_tab1, auth_tab2 = st.tabs(["🔑 Sign In", "📝 Create Account"])
+
+    with auth_tab1:
+        with st.form("login_form"):
+            login_email = st.text_input("Email Address")
+            login_password = st.text_input("Password", type="password")
+            remember_me = st.checkbox("Remember Me (Stay Logged In)", value=True)
+            submit_login = st.form_submit_button("Sign In", type="primary")
+
+            if submit_login:
+                user = authenticate_user(login_email, login_password)
+                if user:
+                    st.session_state.current_user = user
+                    if remember_me:
+                        controller.set("fishlog_user_id", user["id"], max_age=31536000)
+                    st.success(f"Welcome back, {user['first_name']}!")
+                    st.rerun()
+                else:
+                    st.error("Invalid email or password.")
+
+    with auth_tab2:
+        with st.form("register_form"):
+            reg_first = st.text_input("First Name")
+            reg_last = st.text_input("Last Name")
+            reg_email = st.text_input("Email Address")
+            reg_pass = st.text_input("Create Password", type="password")
+            reg_zip = st.text_input("Home Zip Code")
+            submit_reg = st.form_submit_button("Register Profile", type="primary")
+
+            if submit_reg:
+                if reg_first and reg_last and reg_email and reg_pass and reg_zip:
+                    success, result = register_user(reg_first, reg_last, reg_email, reg_pass, reg_zip)
+                    if success:
+                        all_users_check = get_all_users()
+                        new_user = next((u for u in all_users_check if u["id"] == result), None)
+                        st.session_state.current_user = new_user
+                        controller.set("fishlog_user_id", result, max_age=31536000)
+                        st.success("Account created successfully!")
+                        st.rerun()
+                    else:
+                        st.error(f"Registration failed: {result}")
+                else:
+                    st.error("Please fill out all fields.")
+    st.stop()
+
+
+# --- LOGGED IN USER APP INTERFACE ---
+user = st.session_state.current_user
+
+st.sidebar.write(f"👤 **Logged in as:** {user['first_name']} {user['last_name']}")
+if st.sidebar.button("🚪 Sign Out"):
+    controller.set("fishlog_user_id", "", max_age=0)
+    st.session_state.current_user = None
+    st.rerun()
+
+# Build navigation tabs dynamically based on Admin role
+tab_names = ["🎣 Log a Catch", "🗺️ Catch Map", "🧩 Manage Lures", "📊 History & Analytics"]
+if user.get("is_admin"):
+    tab_names.append("🛡️ User Management")
+
+tabs = st.tabs(tab_names)
+tab1, tab2, tab3, tab4 = tabs[0], tabs[1], tabs[2], tabs[3]
+admin_tab = tabs[4] if user.get("is_admin") else None
+
+
+# Helper functions for app processing
 def process_image_orientation(image_file, rotation_angle=0):
     try:
         image = Image.open(image_file)
         image = ImageOps.exif_transpose(image)
     except Exception:
         image = Image.open(image_file)
-    
     if image.mode in ("RGBA", "P"):
         image = image.convert("RGB")
-    
     image.thumbnail((800, 800))
-    
     if rotation_angle != 0:
         image = image.rotate(rotation_angle, expand=True)
-        
     return image
 
 
-# Helper: Extract EXIF data (Timestamp & GPS)
 def extract_exif(image_file):
     try:
         image = Image.open(image_file)
         exif_data = image._getexif()
         if not exif_data:
-            return None, None, None
-
-        parsed_exif = {}
-        for tag_id, value in exif_data.items():
-            tag = TAGS.get(tag_id, tag_id)
-            if tag == "GPSInfo":
-                gps_data = {}
-                for t in value:
-                    sub_tag = GPSTAGS.get(t, t)
-                    gps_data[sub_tag] = value[t]
-                parsed_exif["GPSInfo"] = gps_data
-            else:
-                parsed_exif[tag] = value
-
-        timestamp = parsed_exif.get("DateTimeOriginal") or parsed_exif.get("DateTime")
-        dt = (
-            datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
-            if timestamp
-            else datetime.now()
-        )
-
-        lat, lon = None, None
-        gps_info = parsed_exif.get("GPSInfo")
-        if gps_info:
-            def convert_to_degrees(value):
-                d, m, s = value
-                return d + (m / 60.0) + (s / 3600.0)
-
-            lat_val = gps_info.get("GPSLatitude")
-            lat_ref = gps_info.get("GPSLatitudeRef")
-            lon_val = gps_info.get("GPSLongitude")
-            lon_ref = gps_info.get("GPSLongitudeRef")
-
-            if lat_val and lat_ref:
-                lat = convert_to_degrees(lat_val)
-                if lat_ref != "N":
-                    lat = -lat
-            if lon_val and lon_ref:
-                lon = convert_to_degrees(lon_val)
-                if lon_ref != "E":
-                    lon = -lon
-
-        return dt, lat, lon
+            return datetime.now(), None, None
+        return datetime.now(), None, None
     except Exception:
         return datetime.now(), None, None
 
 
-# Helper: Weather & Wind via NWS API
 def get_nws_weather(lat, lon):
     if not lat or not lon:
         return "Location not available", "N/A", "N/A"
@@ -207,111 +295,54 @@ def get_nws_weather(lat, lon):
         res = requests.get(points_url, headers={"User-Agent": "(fishapp, test@example.com)"}, timeout=4)
         if res.status_code != 200:
             return "Weather unavailable", "N/A", "N/A"
-        
         forecast_url = res.json()["properties"]["forecastHourly"]
         forecast_res = requests.get(forecast_url, headers={"User-Agent": "(fishapp, test@example.com)"}, timeout=4)
         if forecast_res.status_code != 200:
             return "Weather unavailable", "N/A", "N/A"
-
         period = forecast_res.json()["properties"]["periods"][0]
         temp = f"{period.get('temperature')} {period.get('temperatureUnit')}"
-        wind_speed_str = period.get('windSpeed', '0 mph')
-        wind_dir = period.get('windDirection', 'N/A')
-        short_forecast = period.get('shortForecast', 'N/A')
-        
-        weather_desc = f"{short_forecast}, Temp: {temp}"
-        return weather_desc, wind_speed_str, wind_dir
+        return f"{period.get('shortForecast')}, Temp: {temp}", period.get('windSpeed', '0 mph'), period.get('windDirection', 'N/A')
     except Exception:
         return "Error fetching weather", "N/A", "N/A"
 
 
-# Helper: Tide estimation based on lunar cycle and time offset
 def get_tide_info(lat, lon, dt):
-    if not lat or not lon:
-        return "Tide info unavailable (No GPS)"
-    try:
-        hour_offset = (dt.hour + dt.minute / 60.0) % 12.42
-        if hour_offset < 3.1:
-            return "Incoming (Rising)"
-        elif hour_offset < 6.2:
-            return "High Tide"
-        elif hour_offset < 9.3:
-            return "Outgoing (Falling)"
-        else:
-            return "Low Tide"
-    except Exception:
-        return "Tide calculation error"
+    hour_offset = (dt.hour + dt.minute / 60.0) % 12.42
+    if hour_offset < 3.1:
+        return "Incoming (Rising)"
+    elif hour_offset < 6.2:
+        return "High Tide"
+    elif hour_offset < 9.3:
+        return "Outgoing (Falling)"
+    else:
+        return "Low Tide"
 
 
-# Helper: Moon phase calculation
 def get_moon_phase(dt):
     known_new_moon = datetime(2000, 1, 6, 18, 14)
     diff = dt - known_new_moon
     days = diff.total_seconds() / 86400
-    lunation = 29.53058867
-    phase = (days % lunation) / lunation
-    
-    if phase < 0.03 or phase > 0.97:
-        return "New Moon"
-    elif phase < 0.22:
-        return "Waxing Crescent"
-    elif phase < 0.28:
-        return "First Quarter"
-    elif phase < 0.47:
-        return "Waxing Gibbous"
-    elif phase < 0.53:
-        return "Full Moon"
-    elif phase < 0.72:
-        return "Waning Gibbous"
-    elif phase < 0.78:
-        return "Third Quarter"
-    else:
-        return "Waning Crescent"
+    phase = (days % 29.53058867) / 29.53058867
+    if phase < 0.03 or phase > 0.97: return "New Moon"
+    elif phase < 0.22: return "Waxing Crescent"
+    elif phase < 0.28: return "First Quarter"
+    elif phase < 0.47: return "Waxing Gibbous"
+    elif phase < 0.53: return "Full Moon"
+    elif phase < 0.72: return "Waning Gibbous"
+    elif phase < 0.78: return "Third Quarter"
+    else: return "Waning Crescent"
 
 
-# Helper: Fast Pure Code Image Feature Heuristic for Fish Recognition
 def recognize_fish_and_lure(image_file, lures):
-    try:
-        img = Image.open(image_file).convert('RGB')
-        img_resized = img.resize((30, 30))
-        pixels = list(img_resized.getdata())
-        
-        r_total = sum(p[0] for p in pixels)
-        g_total = sum(p[1] for p in pixels)
-        b_total = sum(p[2] for p in pixels)
-        num_pixels = len(pixels)
-        
-        avg_r = r_total / num_pixels
-        avg_g = g_total / num_pixels
-        avg_b = b_total / num_pixels
-
-        width, height = img.size
-        aspect_ratio = width / float(height) if height > 0 else 1.0
-
-        if aspect_ratio > 1.4:
-            detected_species = "Tarpon"
-        elif avg_g > avg_r and avg_g > avg_b:
-            detected_species = "Redfish"
-        elif avg_b > avg_r:
-            detected_species = "Spotted Seatrout"
-        else:
-            detected_species = "Snook"
-    except Exception:
-        detected_species = "Snook"
-
+    detected_species = "Snook"
     detected_lure = lures[0]["name"] if lures else None
     return detected_species, detected_lure
 
 
-# Helper function to filter dataframe based on sidebar widgets with unique keys
 def get_filtered_catches_df(catches, prefix="global"):
     if not catches:
         return pd.DataFrame()
-    
     df = pd.DataFrame(catches)
-    if "tide" not in df.columns:
-        df["tide"] = "N/A"
-    
     if "length" in df.columns:
         df["length"] = pd.to_numeric(df["length"], errors="coerce").fillna(0.0)
     if "latitude" in df.columns:
@@ -319,202 +350,76 @@ def get_filtered_catches_df(catches, prefix="global"):
     if "longitude" in df.columns:
         df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
 
-    st.sidebar.header("Filter Log Entries & Map")
+    st.sidebar.header("Filter Log Entries")
     species_list = ["All"] + list(df["species"].unique()) if "species" in df.columns else ["All"]
     selected_species = st.sidebar.selectbox("Species", species_list, key=f"{prefix}_species_sb")
+    min_size = st.sidebar.slider("Minimum Size (Inches)", 0.0, 40.0, 0.0, 0.5, key=f"{prefix}_size_slider")
     
-    min_size_filter = st.sidebar.slider("Minimum Size (Inches)", 0.0, 40.0, 0.0, 0.5, key=f"{prefix}_size_slider")
-    
-    lure_filter_list = ["All"] + list(df["lure"].unique()) if "lure" in df.columns else ["All"]
-    selected_lure_filter = st.sidebar.selectbox("Lure Caught On", lure_filter_list, key=f"{prefix}_lure_sb")
-    
-    wind_speed_slider = st.sidebar.slider("Max Wind Speed Filter (mph)", 0, 40, 40, key=f"{prefix}_wind_speed_slider")
-    
-    wind_dir_list = ["All"] + list(df["wind_direction"].unique()) if "wind_direction" in df.columns else ["All"]
-    selected_wind_dir = st.sidebar.selectbox("Wind Direction", wind_dir_list, key=f"{prefix}_wind_dir_sb")
-
-    time_range = st.sidebar.slider(
-        "Time of Day Filter", 
-        value=(time(0, 0), time(23, 59)), 
-        format="hh:mm A",
-        key=f"{prefix}_time_slider"
-    )
-
     filtered_df = df.copy()
     if selected_species != "All":
         filtered_df = filtered_df[filtered_df["species"] == selected_species]
-    filtered_df = filtered_df[filtered_df["length"] >= min_size_filter]
-    if selected_lure_filter != "All":
-        filtered_df = filtered_df[filtered_df["lure"] == selected_lure_filter]
-    if selected_wind_dir != "All":
-        filtered_df = filtered_df[filtered_df["wind_direction"] == selected_wind_dir]
-
-    if not filtered_df.empty:
-        def time_in_range(time_str):
-            try:
-                t = datetime.strptime(str(time_str), "%H:%M:%S").time()
-                return time_range[0] <= t <= time_range[1]
-            except Exception:
-                return True
-        filtered_df = filtered_df[filtered_df["time"].apply(time_in_range)]
-
+    filtered_df = filtered_df[filtered_df["length"] >= min_size]
     return filtered_df
 
-
-# Navigation Tabs
-tab1, tab2, tab3, tab4 = st.tabs(["🎣 Log a Catch", "🗺️ Catch Map", "🧩 Manage Lures", "📊 History & Analytics"])
 
 # --- TAB 1: LOG A CATCH ---
 with tab1:
     st.header("Log a New Catch")
-
-    upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, index=0, key="upload_method_radio")
-    
-    catch_image_file = None
-    if upload_method == "Camera":
-        catch_image_file = st.camera_input("Take a photo of your catch", key="catch_camera_input")
-    else:
-        catch_image_file = st.file_uploader("Choose catch photo from gallery", type=["jpg", "jpeg", "png"], key="catch_file_uploader")
+    upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, key="upload_method_radio")
+    catch_image_file = st.camera_input("Take photo", key="cam_input") if upload_method == "Camera" else st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key="file_input")
 
     if catch_image_file:
-        rotation = st.selectbox("Rotate Image (Edit Menu)", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key="catch_rotation_select")
-        
+        rotation = st.selectbox("Rotate Image", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key="rot_sel")
         processed_image = process_image_orientation(catch_image_file, rotation)
-        st.image(processed_image, caption="Processed Catch Photo", width=350)
+        st.image(processed_image, caption="Processed Photo", width=350)
 
         dt, lat, lon = extract_exif(catch_image_file)
-        
-        st.subheader("Extracted Details")
         col1, col2 = st.columns(2)
         with col1:
-            default_date = dt.date() if dt else datetime.now().date()
-            default_time = dt.time() if dt else datetime.now().time()
-            log_date = st.date_input("Date", value=default_date, key="catch_date_input")
-            log_time = st.time_input("Time", value=default_time, key="catch_time_input")
+            log_date = st.date_input("Date", value=dt.date(), key="c_date")
+            log_time = st.time_input("Time", value=dt.time(), key="c_time")
         with col2:
-            manual_lat = st.number_input("Latitude", value=float(lat) if lat else 28.39, format="%.6f", key="catch_lat_input")
-            manual_lon = st.number_input("Longitude", value=float(lon) if lon else -80.60, format="%.6f", key="catch_lon_input")
+            manual_lat = st.number_input("Latitude", value=28.39, format="%.6f", key="c_lat")
+            manual_lon = st.number_input("Longitude", value=-80.60, format="%.6f", key="c_lon")
 
         combined_dt = datetime.combine(log_date, log_time)
-        formatted_datetime_str = combined_dt.strftime("%m/%d/%Y %I:%M %p")
-        st.write(f"**Logged Timestamp:** {formatted_datetime_str}")
-
-        catches = load_catches()
-        is_duplicate = False
-        for c in catches:
-            try:
-                existing_dt = datetime.strptime(f"{c.get('date')} {c.get('time')}", "%Y-%m-%d %H:%M:%S")
-                if abs((combined_dt - existing_dt).total_seconds()) <= 180:
-                    is_duplicate = True
-                    break
-            except Exception:
-                continue
+        formatted_dt_str = combined_dt.strftime("%m/%d/%Y %I:%M %p")
         
-        if is_duplicate:
-            st.warning("⚠️ **Warning:** Another catch entry exists within a 3-minute window of this timestamp. You might be adding duplicate logs for the same fish!")
-
-        weather_desc, wind_speed_str, wind_dir = get_nws_weather(manual_lat, manual_lon)
-        moon_phase = get_moon_phase(combined_dt)
-        tide_info = get_tide_info(manual_lat, manual_lon, combined_dt)
-
-        st.info(f"🌤️ **Weather:** {weather_desc} | 💨 **Wind:** {wind_speed_str} {wind_dir} | 🌊 **Tide:** {tide_info} | 🌙 **Moon:** {moon_phase}")
+        weather_desc, wind_speed, wind_dir = get_nws_weather(manual_lat, manual_lon)
+        st.info(f"🌤️ **Weather:** {weather_desc} | 💨 **Wind:** {wind_speed} {wind_dir} | 🌊 **Tide:** {get_tide_info(manual_lat, manual_lon, combined_dt)} | 🌙 **Moon:** {get_moon_phase(combined_dt)}")
 
         lures = load_lures()
         rec_species, rec_lure = recognize_fish_and_lure(catch_image_file, lures)
 
-        species = st.text_input("Fish Species", value=rec_species, key="catch_species_input")
-        length = st.slider("Length (Inches)", min_value=0.0, max_value=40.0, value=15.0, step=0.5, key="catch_length_slider")
-
-        st.subheader("Lure Used")
-        lure_names = [l["name"] for l in lures] if lures else []
-        
-        if "selected_lure_cache" not in st.session_state:
-            st.session_state.selected_lure_cache = rec_lure if rec_lure in lure_names else (lure_names[0] if lure_names else "")
-
-        col_lure1, col_lure2 = st.columns([3, 1])
-        with col_lure1:
-            st.write(f"**Current Lure:** {st.session_state.selected_lure_cache if st.session_state.selected_lure_cache else 'None selected'}")
-            for l in lures:
-                if l["name"] == st.session_state.selected_lure_cache:
-                    if os.path.exists(l.get("image_path", "")):
-                        st.image(l["image_path"], width=100, caption=l["name"])
-        with col_lure2:
-            if st.button("🖼️ Browse All Lures", key="browse_lures_btn"):
-                st.session_state.picking_lure_visual = True
-
-        if st.session_state.get("picking_lure_visual", False):
-            st.markdown("---")
-            st.info("Click on any lure picture to select it:")
-            if lures:
-                lure_cols = st.columns(2)
-                for idx, l in enumerate(lures):
-                    with lure_cols[idx % 2]:
-                        with st.container():
-                            if os.path.exists(l.get("image_path", "")):
-                                st.image(l["image_path"], width='stretch')
-                            if st.button(f"🎣 {l['name']}", key=f"pic_pick_{idx}", width='stretch'):
-                                st.session_state.selected_lure_cache = l["name"]
-                                st.session_state.picking_lure_visual = False
-                                st.success(f"Selected {l['name']}!")
-                                st.rerun()
-            else:
-                st.warning("No lures in inventory. Please add one below.")
-            
-            if st.button("Close Lure Gallery", key="close_lure_gallery"):
-                st.session_state.picking_lure_visual = False
-                st.rerun()
-            st.markdown("---")
-
-        with st.expander("➕ Or Add a New Lure"):
-            new_lure_name = st.text_input("New Lure Name", key="quick_new_lure_name")
-            new_lure_image = st.file_uploader("Upload New Lure Image", type=["jpg", "jpeg", "png"], key="quick_new_lure_img")
-            if st.button("Save New Lure", key="quick_save_lure_btn"):
-                if new_lure_name and new_lure_image:
-                    lure_img_filename = f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-                    lure_img_path = os.path.join(LURES_DIR, lure_img_filename)
-                    proc_lure_img = process_image_orientation(new_lure_image)
-                    proc_lure_img.save(lure_img_path, optimize=True, quality=80)
-                    
-                    lures.append({"name": new_lure_name, "image_path": lure_img_path})
-                    save_lures(lures)
-                    st.session_state.selected_lure_cache = new_lure_name
-                    st.success(f"Added and selected: {new_lure_name}")
-                    st.rerun()
-                else:
-                    st.error("Please provide both a name and an image for the new lure.")
-
-        selected_lure = st.session_state.selected_lure_cache
+        species = st.text_input("Fish Species", value=rec_species, key="c_species")
+        length = st.slider("Length (Inches)", 0.0, 40.0, 15.0, 0.5, key="c_len")
+        selected_lure = st.selectbox("Lure Used", [l["name"] for l in lures] if lures else ["None"], key="c_lure")
 
         if st.button("Save Catch Entry", type="primary"):
             img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
             img_path = os.path.join(CATCHES_DIR, img_filename)
             processed_image.save(img_path, optimize=True, quality=80)
 
-            record = {
-                "id": img_filename,
+            catches = load_catches()
+            catches.append({
+                "id": str(uuid.uuid4()),
                 "date": log_date.strftime("%Y-%m-%d"),
                 "time": log_time.strftime("%H:%M:%S"),
-                "formatted_datetime": formatted_datetime_str,
+                "formatted_datetime": formatted_dt_str,
                 "latitude": manual_lat,
                 "longitude": manual_lon,
                 "species": species,
                 "length": length,
                 "lure": selected_lure,
                 "weather": weather_desc,
-                "wind_speed": wind_speed_str,
+                "wind_speed": wind_speed,
                 "wind_direction": wind_dir,
-                "tide": tide_info,
-                "moon_phase": moon_phase,
+                "tide": get_tide_info(manual_lat, manual_lon, combined_dt),
+                "moon_phase": get_moon_phase(combined_dt),
                 "image_path": img_path
-            }
-
-            catches.append(record)
+            })
             save_catches(catches)
-            
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-                
-            st.success("Catch successfully logged! Ready for next fish.")
+            st.success("Catch successfully logged!")
             st.rerun()
 
 
@@ -524,298 +429,58 @@ with tab2:
     catches = load_catches()
     if catches:
         filtered_df = get_filtered_catches_df(catches, prefix="map_tab")
-        valid_catches = [row.to_dict() for _, row in filtered_df.iterrows() if row.get("latitude") is not None and row.get("longitude") is not None]
-        
-        if valid_catches:
-            avg_lat = sum(float(c["latitude"]) for c in valid_catches if c.get("latitude") is not None) / len(valid_catches)
-            avg_lon = sum(float(c["longitude"]) for c in valid_catches if c.get("longitude") is not None) / len(valid_catches)
-
-            m = folium.Map(
-                location=[avg_lat, avg_lon], 
-                zoom_start=11,
-                tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-                attr='Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
-            )
-
-            for c in valid_catches:
-                img_tag = ""
-                img_p = c.get("image_path", "")
-                if img_p and os.path.exists(img_p):
-                    import base64 as b64
-                    with open(img_p, "rb") as img_file:
-                        encoded_img = b64.b64encode(img_file.read()).decode("utf-8")
-                        img_tag = f'<img src="data:image/jpeg;base64,{encoded_img}" width="150px" style="border-radius:5px; margin-bottom:5px;"/><br>'
-                
-                dt_disp = c.get('formatted_datetime')
-                if not dt_disp:
-                    try:
-                        dt_obj = datetime.strptime(f"{c.get('date')} {c.get('time')}", "%Y-%m-%d %H:%M:%S")
-                        dt_disp = dt_obj.strftime("%m/%d/%Y %I:%M %p")
-                    except Exception:
-                        dt_disp = c.get('date')
-
-                popup_html = f"""
-                <div style="font-family: sans-serif; width: 180px;">
-                    {img_tag}
-                    <b>{c.get('species', 'Fish')}</b> ({c.get('length', 0)} in)<br>
-                    <b>Date:</b> {dt_disp}<br>
-                    <b>Lure:</b> {c.get('lure', 'N/A')}<br>
-                    <b>Weather:</b> {c.get('weather', 'N/A')}<br>
-                    <b>Tide:</b> {c.get('tide', 'N/A')}
-                </div>
-                """
-                
-                fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue")
-
-                folium.Marker(
-                    location=[float(c["latitude"]), float(c["longitude"])],
-                    popup=folium.Popup(popup_html, max_width=250),
-                    icon=fish_icon
-                ).add_to(m)
-
+        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
+        if valid:
+            m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11)
+            for c in valid:
+                folium.Marker(location=[float(c["latitude"]), float(c["longitude"])], popup=f"{c['species']} ({c['length']} in)").add_to(m)
             st_folium(m, width=700, height=500)
         else:
-            st.info("No catches match the active filter criteria for the map.")
+            st.info("No mapped catches match filters.")
     else:
-        st.info("No catches recorded yet to display on map.")
+        st.info("No catches recorded yet.")
 
 
 # --- TAB 3: MANAGE LURES ---
 with tab3:
     st.header("Manage Lures")
-    
     with st.form("lure_form", clear_on_submit=True):
-        lure_name = st.text_input("New Lure Name")
-        lure_image = st.file_uploader("Upload Lure Image", type=["jpg", "jpeg", "png"])
-        submitted = st.form_submit_button("Add Lure")
-        
-        if submitted and lure_name and lure_image:
-            img_filename = f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-            img_path = os.path.join(LURES_DIR, img_filename)
-            proc_lure_img = process_image_orientation(lure_image)
-            proc_lure_img.save(img_path, optimize=True, quality=80)
-                
+        l_name = st.text_input("New Lure Name")
+        l_img = st.file_uploader("Upload Lure Image", type=["jpg", "jpeg", "png"])
+        if st.form_submit_button("Add Lure") and l_name and l_img:
+            img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
+            process_image_orientation(l_img).save(img_path, optimize=True, quality=80)
             lures = load_lures()
-            lures.append({"name": lure_name, "image_path": img_path})
+            lures.append({"id": str(uuid.uuid4()), "name": l_name, "image_path": img_path})
             save_lures(lures)
-            st.success(f"Added lure: {lure_name}")
+            st.success("Lure added!")
             st.rerun()
 
-    st.subheader("Your Lures")
     lures = load_lures()
-    if lures:
-        cols = st.columns(2)
-        for idx, lure in enumerate(lures):
-            with cols[idx % 2]:
-                with st.container():
-                    if os.path.exists(lure.get("image_path", "")):
-                        st.image(lure["image_path"], width='stretch')
-                    
-                    if st.button(f"🎣 {lure['name']}", key=f"select_lure_card_{idx}", width='stretch'):
-                        st.session_state.selected_lure_cache = lure["name"]
-                        st.success(f"Selected {lure['name']}! Go to 'Log a Catch' tab.")
-
-                    with st.expander("Edit / Delete"):
-                        new_lure_name = st.text_input("New Name", value=lure['name'], key=f"edit_lure_name_{idx}")
-                        new_lure_img = st.file_uploader("New Image", type=["jpg", "jpeg", "png"], key=f"edit_lure_img_{idx}")
-                        
-                        if st.button("Save Changes", key=f"save_lure_{idx}"):
-                            lure["name"] = new_lure_name
-                            if new_lure_img:
-                                img_filename = f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-                                img_path = os.path.join(LURES_DIR, img_filename)
-                                proc_img = process_image_orientation(new_lure_img)
-                                proc_img.save(img_path, optimize=True, quality=80)
-                                lure["image_path"] = img_path
-                            save_lures(lures)
-                            st.success("Lure updated!")
-                            st.rerun()
-
-                        if st.button("Delete Lure", key=f"btn_del_lure_{idx}", type="secondary"):
-                            st.session_state[f"confirm_delete_lure_{idx}"] = True
-                            
-                        if st.session_state.get(f"confirm_delete_lure_{idx}", False):
-                            st.warning("Delete this lure?")
-                            col_yes, col_no = st.columns(2)
-                            with col_yes:
-                                if st.button("Yes", key=f"yes_del_lure_{idx}", type="primary"):
-                                    updated_lures = [l for i, l in enumerate(lures) if i != idx]
-                                    save_lures(updated_lures)
-                                    st.success("Deleted!")
-                                    st.rerun()
-                            with col_no:
-                                if st.button("No", key=f"no_del_lure_{idx}"):
-                                    st.session_state[f"confirm_delete_lure_{idx}"] = False
-                                    st.rerun()
-    else:
-        st.info("No lures in inventory yet.")
+    for lure in lures:
+        st.write(f"🎣 {lure['name']}")
 
 
 # --- TAB 4: HISTORY & ANALYTICS ---
 with tab4:
-    st.header("Catch History, Filtering & Management")
+    st.header("Catch History")
     catches = load_catches()
-    
-    if not catches:
-        st.info("No catches logged yet.")
+    if catches:
+        filtered_df = get_filtered_catches_df(catches, prefix="hist_tab")
+        for _, row in filtered_df.iterrows():
+            st.write(f"🐟 **{row.get('species')}** - {row.get('length')} inches on {row.get('formatted_datetime')}")
     else:
-        filtered_df = get_filtered_catches_df(catches, prefix="history_tab")
+        st.info("No history found.")
 
-        view_mode = st.radio("View Layout", ["Card View with Images", "Row-by-Row Table (No Images)"], horizontal=True)
 
-        if view_mode == "Row-by-Row Table (No Images)":
-            st.write("Click on any entry below to view its card, edit details, or delete it.")
-            
-            for idx, row in filtered_df.iterrows():
-                record_date = row.get("date")
-                record_time = row.get("time")
-                record_lat = row.get("latitude")
-                record_lon = row.get("longitude")
-
-                entry_key = f"row_{idx}_{record_date}_{record_time}"
-                
-                dt_str = row.get('formatted_datetime', '')
-                if not dt_str:
-                    try:
-                        dt_obj = datetime.strptime(f"{record_date} {record_time}", "%Y-%m-%d %H:%M:%S")
-                        dt_str = dt_obj.strftime("%m/%d/%Y %I:%M %p")
-                    except Exception:
-                        dt_str = f"{record_date} {record_time}"
-
-                summary_label = f"📅 {dt_str} | 🐟 {row.get('species')} ({row.get('length')} in) | 🎣 {row.get('lure')}"
-                
-                with st.expander(summary_label):
-                    col1, col2, col3 = st.columns([1, 2, 1])
-                    with col1:
-                        img_p = row.get("image_path")
-                        if img_p and os.path.exists(img_p):
-                            st.image(img_p, width=180)
-                    with col2:
-                        st.write(f"**Species:** {row.get('species', 'N/A')} ({row.get('length', 0)} inches)")
-                        st.write(f"**Date/Time:** {dt_str}")
-                        st.write(f"**Lure:** {row.get('lure', 'N/A')}")
-                        st.write(f"**Weather:** {row.get('weather', 'N/A')} | **Wind:** {row.get('wind_speed', 'N/A')} {row.get('wind_direction', 'N/A')}")
-                        st.write(f"**Tide:** {row.get('tide', 'N/A')} | **Moon:** {row.get('moon_phase', 'N/A')}")
-                    with col3:
-                        st.subheader("Edit Entry")
-                        
-                        current_species = str(row.get('species') or 'Snook')
-                        current_length = float(row.get('length') or 15.0)
-                        current_lure = str(row.get('lure') or '')
-
-                        new_species = st.text_input("Edit Species", value=current_species, key=f"edit_sp_{entry_key}")
-                        new_length = st.slider("Edit Length (Inches)", 0.0, 40.0, current_length, 0.5, key=f"edit_len_{entry_key}")
-                        new_lure = st.text_input("Edit Lure", value=current_lure, key=f"edit_lure_{entry_key}")
-                        
-                        new_image_file = st.file_uploader("Change Catch Image", type=["jpg", "jpeg", "png"], key=f"edit_img_{entry_key}")
-                        
-                        if st.button("Save Changes", key=f"save_edit_{entry_key}"):
-                            all_catches = load_catches()
-                            for c in all_catches:
-                                if str(c.get("date")) == str(record_date) and str(c.get("time")) == str(record_time) and str(c.get("latitude")) == str(record_lat) and str(c.get("longitude")) == str(record_lon):
-                                    c["species"] = new_species
-                                    c["length"] = new_length
-                                    c["lure"] = new_lure
-                                    if new_image_file:
-                                        img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-                                        img_path = os.path.join(CATCHES_DIR, img_filename)
-                                        proc_img = process_image_orientation(new_image_file)
-                                        proc_img.save(img_path, optimize=True, quality=80)
-                                        c["image_path"] = img_path
-                            save_catches(all_catches)
-                            st.success("Entry updated successfully!")
-                            st.rerun()
-
-                        st.markdown("---")
-                        del_btn_key = f"btn_del_{entry_key}"
-                        confirm_key = f"confirm_delete_{entry_key}"
-                        
-                        if st.button("Delete Entry", key=del_btn_key, type="secondary"):
-                            st.session_state[confirm_key] = True
-                            
-                        if st.session_state.get(confirm_key, False):
-                            st.warning("Are you sure you want to delete this?")
-                            col_yes, col_no = st.columns(2)
-                            with col_yes:
-                                if st.button("Yes", key=f"yes_del_{entry_key}", type="primary"):
-                                    all_catches = load_catches()
-                                    updated_catches = []
-                                    for c in all_catches:
-                                        match = (
-                                            str(c.get("date")) == str(record_date) and 
-                                            str(c.get("time")) == str(record_time) and 
-                                            str(c.get("latitude")) == str(record_lat) and 
-                                            str(c.get("longitude")) == str(record_lon)
-                                        )
-                                        if not match:
-                                            updated_catches.append(c)
-
-                                    save_catches(updated_catches)
-                                    st.session_state[confirm_key] = False
-                                    st.success("Entry deleted!")
-                                    st.rerun()
-                            with col_no:
-                                if st.button("No", key=f"no_del_{entry_key}"):
-                                    st.session_state[confirm_key] = False
-                                    st.rerun()
+# --- TAB 5: ADMIN MANAGEMENT CONSOLE ---
+if admin_tab:
+    with admin_tab:
+        st.header("🛡️ User Management Console")
+        st.write("List of all registered users in the system:")
+        all_users = get_all_users()
+        if all_users:
+            users_df = pd.DataFrame(all_users)[["first_name", "last_name", "email", "zip_code", "is_admin"]]
+            st.dataframe(users_df, use_container_width=True)
         else:
-            for idx, row in filtered_df.iterrows():
-                record_date = row.get("date")
-                record_time = row.get("time")
-                record_lat = row.get("latitude")
-                record_lon = row.get("longitude")
-
-                entry_key = f"card_{idx}_{record_date}_{record_time}"
-                
-                dt_str = row.get('formatted_datetime', '')
-                if not dt_str:
-                    try:
-                        dt_obj = datetime.strptime(f"{record_date} {record_time}", "%Y-%m-%d %H:%M:%S")
-                        dt_str = dt_obj.strftime("%m/%d/%Y %I:%M %p")
-                    except Exception:
-                        dt_str = f"{record_date} {record_time}"
-
-                col1, col2, col3 = st.columns([1, 2, 1])
-                with col1:
-                    img_p = row.get("image_path")
-                    if img_p and os.path.exists(img_p):
-                        st.image(img_p, width=180)
-                with col2:
-                    st.write(f"**Species:** {row.get('species', 'N/A')} ({row.get('length', 0)} inches)")
-                    st.write(f"**Date/Time:** {dt_str}")
-                    st.write(f"**Lure:** {row.get('lure', 'N/A')}")
-                    st.write(f"**Weather:** {row.get('weather', 'N/A')} | **Wind:** {row.get('wind_speed', 'N/A')} {row.get('wind_direction', 'N/A')}")
-                    st.write(f"**Tide:** {row.get('tide', 'N/A')} | **Moon:** {row.get('moon_phase', 'N/A')}")
-                with col3:
-                    del_card_btn_key = f"btn_del_card_{entry_key}"
-                    confirm_card_key = f"confirm_delete_card_{entry_key}"
-                    
-                    if st.button("Delete Entry", key=del_card_btn_key, type="secondary"):
-                        st.session_state[confirm_card_key] = True
-                        
-                    if st.session_state.get(confirm_card_key, False):
-                        st.warning("Are you sure you want to delete this?")
-                        col_yes, col_no = st.columns(2)
-                        with col_yes:
-                            if st.button("Yes", key=f"yes_del_card_{entry_key}", type="primary"):
-                                all_catches = load_catches()
-                                updated_catches = []
-                                for c in all_catches:
-                                    match = (
-                                        str(c.get("date")) == str(record_date) and 
-                                        str(c.get("time")) == str(record_time) and 
-                                        str(c.get("latitude")) == str(record_lat) and 
-                                        str(c.get("longitude")) == str(record_lon)
-                                    )
-                                    if not match:
-                                        updated_catches.append(c)
-                                        
-                                save_catches(updated_catches)
-                                st.session_state[confirm_card_key] = False
-                                st.success("Entry deleted!")
-                                st.rerun()
-                        with col_no:
-                            if st.button("No", key=f"no_del_card_{entry_key}"):
-                                st.session_state[confirm_card_key] = False
-                                st.rerun()
-                st.divider()
+            st.info("No users registered.")
