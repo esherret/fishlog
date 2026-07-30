@@ -213,19 +213,16 @@ def save_user_data(table_name, data_list):
 
 def load_catches():
     all_data = load_user_data("catches")
-    # Return only active (non-deleted) catches
     return [c for c in all_data if str(c.get("is_deleted", "false")).lower() != "true"]
 
 def load_trashed_catches():
     all_data = load_user_data("catches")
-    # Return only trashed catches
     return [c for c in all_data if str(c.get("is_deleted", "false")).lower() == "true"]
 
 def load_all_catches_raw():
     return load_user_data("catches")
 
 def save_catches(catches):
-    # Preserve deleted flags when saving full list
     existing_raw = load_all_catches_raw()
     deleted_items = [c for c in existing_raw if str(c.get("is_deleted", "false")).lower() == "true"]
     combined = catches + deleted_items
@@ -408,8 +405,9 @@ def get_moon_phase(dt):
 
 def recognize_fish_and_lure(image_file, lures):
     try:
-        img = Image.open(image_file).convert('RGB').resize((30, 30))
-        target_pixels = list(img.getdata())
+        img = Image.open(image_file).convert('RGB')
+        img_resized = img.resize((30, 30))
+        target_pixels = list(img_resized.getdata())
         target_r = sum(p[0] for p in target_pixels) / len(target_pixels)
         target_g = sum(p[1] for p in target_pixels) / len(target_pixels)
         target_b = sum(p[2] for p in target_pixels) / len(target_pixels)
@@ -488,7 +486,7 @@ with tab1:
             log_time = st.time_input("Time", value=dt.time(), key="c_time")
         with col2:
             manual_lat = st.number_input("Latitude", value=28.39, format="%.6f", key="c_lat")
-            manual_lon = st.number_input("Longitude", value=-80.60, format="%.6f", key="c_lon")
+            manual_lon = st.number_input("Longitude", value=float(lon) if lon else -80.60, format="%.6f", key="catch_lon_input")
 
         combined_dt = datetime.combine(log_date, log_time)
         formatted_dt_str = combined_dt.strftime("%m/%d/%Y %I:%M %p")
@@ -645,7 +643,6 @@ with tab4:
 
                     save_all_catches_raw(all_raw)
 
-                    # Remove from recognition accuracy library when soft-deleted
                     samples = load_species_samples()
                     updated_samples = [s for s in samples if s.get("catch_id") not in deleted_ids]
                     save_species_samples_table(updated_samples)
@@ -681,10 +678,23 @@ with tab4:
                     st.write(f"🌊 **Tide:** {row.get('tide')} | 🌙 **Moon:** {row.get('moon_phase')}")
 
                 with col_act:
-                    if st.button("Edit/Delete", key=f"edit_del_btn_{idx}"):
+                    if st.button("Edit", key=f"edit_btn_{idx}"):
                         st.session_state[f"show_edit_panel_{row.get('id')}"] = True
+                    if st.button("Delete", key=f"del_btn_{idx}"):
+                        all_c = load_all_catches_raw()
+                        for c in all_c:
+                            if c.get("id") == row.get("id"):
+                                c["is_deleted"] = "true"
+                        save_all_catches_raw(all_c)
+                        
+                        samples = load_species_samples()
+                        updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
+                        save_species_samples_table(updated_samples)
+                        
+                        st.success("Moved to Recycle Bin!")
+                        st.rerun()
 
-                # Interactive Edit / Delete expander panel
+                # Interactive Edit expander panel
                 if st.session_state.get(f"show_edit_panel_{row.get('id')}", False):
                     with st.form(key=f"edit_catch_form_{row.get('id')}"):
                         st.write(f"**Editing Catch ID:** {row.get('id')[:6]}")
@@ -693,11 +703,9 @@ with tab4:
                         new_lure = st.text_input("Lure", value=row.get("lure", ""))
                         new_img_file = st.file_uploader("Replace Catch Image (Optional)", type=["jpg", "jpeg", "png"], key=f"edit_file_{row.get('id')}")
 
-                        col_sub_save, col_sub_del, col_sub_cancel = st.columns(3)
+                        col_sub_save, col_sub_cancel = st.columns(2)
                         with col_sub_save:
                             save_edits = st.form_submit_button("Save Changes", type="primary")
-                        with col_sub_del:
-                            delete_entry = st.form_submit_button("Confirm Delete", type="secondary")
                         with col_sub_cancel:
                             cancel_edit = st.form_submit_button("Cancel")
 
@@ -716,21 +724,6 @@ with tab4:
                             save_all_catches_raw(all_c)
                             st.session_state[f"show_edit_panel_{row.get('id')}"] = False
                             st.success("Entry updated successfully!")
-                            st.rerun()
-
-                        if delete_entry:
-                            all_c = load_all_catches_raw()
-                            for c in all_c:
-                                if c.get("id") == row.get("id"):
-                                    c["is_deleted"] = "true"
-                            save_all_catches_raw(all_c)
-                            
-                            samples = load_species_samples()
-                            updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
-                            save_species_samples_table(updated_samples)
-                            
-                            st.session_state[f"show_edit_panel_{row.get('id')}"] = False
-                            st.success("Moved to Recycle Bin!")
                             st.rerun()
 
                         if cancel_edit:
