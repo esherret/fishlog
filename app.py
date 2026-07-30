@@ -688,15 +688,21 @@ with tab4:
                             with col_yes:
                                 if st.button("Yes", key=f"yes_del_{entry_id}_{idx}", type="primary"):
                                     all_catches = load_json(DB_FILE)
+                                    
+                                    # DEBUG DIAGNOSTIC FEEDBACK
+                                    st.info(f"DIAGNOSTIC - Target ID to match: {repr(entry_id)}")
+                                    st.info(f"DIAGNOSTIC - Total records in DB: {len(all_catches)}")
+                                    for db_idx, item in enumerate(all_catches):
+                                        st.write(f"Index {db_idx}: id={repr(item.get('id'))}, fallback_id={repr(f'row_{db_idx}')}")
+                                    
                                     updated_catches = []
                                     for i, c in enumerate(all_catches):
                                         curr_id = str(c.get("id") or f"row_{i}")
                                         if curr_id != entry_id:
                                             updated_catches.append(c)
+                                    
                                     save_json(DB_FILE, updated_catches)
-                                    st.session_state[confirm_key] = False
-                                    st.success("Entry deleted!")
-                                    st.rerun()
+                                    st.success(f"DIAGNOSTIC - Before: {len(all_catches)}, After: {len(updated_catches)}")
                             with col_no:
                                 if st.button("No", key=f"no_del_{entry_id}_{idx}"):
                                     st.session_state[confirm_key] = False
@@ -737,15 +743,21 @@ with tab4:
                         with col_yes:
                             if st.button("Yes", key=f"yes_del_card_{entry_id}_{idx}", type="primary"):
                                 all_catches = load_json(DB_FILE)
+                                
+                                # DEBUG DIAGNOSTIC FEEDBACK
+                                st.info(f"DIAGNOSTIC - Target ID to match: {repr(entry_id)}")
+                                st.info(f"DIAGNOSTIC - Total records in DB: {len(all_catches)}")
+                                for db_idx, item in enumerate(all_catches):
+                                    st.write(f"Index {db_idx}: id={repr(item.get('id'))}, fallback_id={repr(f'card_{db_idx}')}")
+
                                 updated_catches = []
                                 for i, c in enumerate(all_catches):
                                     curr_id = str(c.get("id") or f"card_{i}")
                                     if curr_id != entry_id:
                                         updated_catches.append(c)
+                                        
                                 save_json(DB_FILE, updated_catches)
-                                st.session_state[confirm_card_key] = False
-                                st.success("Entry deleted!")
-                                st.rerun()
+                                st.success(f"DIAGNOSTIC - Before: {len(all_catches)}, After: {len(updated_catches)}")
                         with col_no:
                             if st.button("No", key=f"no_del_card_{entry_id}_{idx}"):
                                 st.session_state[confirm_card_key] = False
