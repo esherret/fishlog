@@ -487,7 +487,6 @@ with tab1:
         with col_dt2:
             log_time = st.time_input("Time (AM/PM)", value=dt.time(), key="c_time")
 
-        # Thumbnail map showing location
         st.write("📍 **Catch Location:**")
         manual_lat = st.number_input("Latitude", value=28.39, format="%.6f", key="c_lat")
         manual_lon = st.number_input("Longitude", value=float(lon) if lon else -80.60, format="%.6f", key="catch_lon_input")
@@ -505,7 +504,6 @@ with tab1:
         lures = load_lures()
         rec_species, rec_lure = recognize_fish_and_lure(catch_image_file, lures)
 
-        # Type of Fish (Correctly ID'd [ ]) on the same line
         col_sp1, col_sp2 = st.columns([3, 1])
         with col_sp1:
             species = st.text_input("Type of Fish", value=rec_species, key="c_species")
@@ -620,7 +618,7 @@ with tab4:
                 column_config={
                     "Select": st.column_config.CheckboxColumn("Select", help="Select records to move to Recycle Bin", default=False),
                     "formatted_datetime": "Date/Time",
-                    "species": "Species",
+                    "species": "Type of Fish",
                     "length": "Length (in)",
                     "lure": "Lure",
                     "weather": "Weather",
@@ -655,7 +653,7 @@ with tab4:
                     save_all_catches_raw(all_raw)
 
                     samples = load_species_samples()
-                    updated_samples = [s for s in samples if s.get("catch_id"] not in deleted_ids]
+                    updated_samples = [s for s in samples if s.get("catch_id") not in deleted_ids]
                     save_species_samples_table(updated_samples)
 
                     st.success(f"Successfully moved {len(selected_rows)} selected catch(es) to Recycle Bin!")
