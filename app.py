@@ -6,6 +6,8 @@ from PIL.ExifTags import TAGS, GPSTAGS
 import pandas as pd
 import requests
 import streamlit as st
+from streamlit_folium import st_folium
+import folium
 
 # Configure page
 st.set_page_config(page_title="Fish Catch Log", page_icon="🎣", layout="wide")
@@ -70,7 +72,6 @@ def extract_exif(image_file):
             else:
                 parsed_exif[tag] = value
 
-        # Extract timestamp
         timestamp = parsed_exif.get("DateTimeOriginal") or parsed_exif.get("DateTime")
         dt = (
             datetime.strptime(timestamp, "%Y:%m:%d %H:%M:%S")
@@ -78,7 +79,6 @@ def extract_exif(image_file):
             else datetime.now()
         )
 
-        # Extract GPS coordinates
         lat, lon = None, None
         gps_info = parsed_exif.get("GPSInfo")
         if gps_info:
@@ -132,7 +132,7 @@ def get_nws_weather(lat, lon):
         return "Error fetching weather", "N/A", "N/A"
 
 
-# Helper: Tide estimation based on NOAA API or approximation framework
+# Helper: Tide estimation based on lunar cycle and time offset
 def get_tide_info(lat, lon, dt):
     if not lat or not lon:
         return "Tide info unavailable (No GPS)"
@@ -298,11 +298,43 @@ with tab2:
     st.header("Catch Location Map")
     catches = load_json(DB_FILE)
     if catches:
-        map_df = pd.DataFrame(catches)
-        if "latitude" in map_df.columns and "longitude" in map_df.columns:
-            st.map(map_df, latitude="latitude", longitude="longitude", size=30, color=None)
+        valid_catches = [c for c in catches if c.get("latitude") and c.get("longitude")]
+        if valid_catches:
+            # Center map on the latest catch or average coordinates
+            avg_lat = sum(c["latitude"] for c in valid_catches) / len(valid_catches)
+            avg_lon = sum(c["longitude"] for c in valid_catches) / len(valid_catches)
+
+            m = folium.Map(location=[avg_lat, avg_lon], zoom_start=11)
+
+            for c in valid_catches:
+                # Build HTML popup content including thumbnail image
+                img_tag = ""
+                if os.path.exists(c.get("image_path", "")):
+                    img_tag = f'<img src="app/static/{c["image_path"]}" width="150px" style="border-radius:5px; margin-bottom:5px;"/><br>'
+                
+                popup_html = f"""
+                <div style="font-family: sans-serif; width: 180px;">
+                    {img_tag}
+                    <b>{c.get('species', 'Fish')}</b> ({c.get('length', 0)} in)<br>
+                    <b>Date:</b> {c.get('formatted_datetime', c.get('date'))}<br>
+                    <b>Lure:</b> {c.get('lure', 'N/A')}<br>
+                    <b>Weather:</b> {c.get('weather', 'N/A')}<br>
+                    <b>Tide:</b> {c.get('tide', 'N/A')}
+                </div>
+                """
+                
+                # Custom fish marker icon using FontAwesome
+                fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue")
+
+                folium.Marker(
+                    location=[c["latitude"], c["longitude"]],
+                    popup=folium.Popup(popup_html, max_width=250),
+                    icon=fish_icon
+                ).add_to(m)
+
+            st_folium(m, width=700, height=500)
         else:
-            st.info("No GPS coordinate data found in logs.")
+            st.info("No valid GPS coordinate data found in logs.")
     else:
         st.info("No catches recorded yet to display on map.")
 
@@ -346,11 +378,9 @@ with tab4:
     else:
         df = pd.DataFrame(catches)
         
-        # Ensure 'tide' column exists safely if older records are present
         if "tide" not in df.columns:
             df["tide"] = "N/A"
 
-        # Sidebar Filters
         st.sidebar.header("Filter Log Entries")
         species_list = ["All"] + list(df["species"].unique()) if "species" in df.columns else ["All"]
         selected_species = st.sidebar.selectbox("Species", species_list)
@@ -365,7 +395,6 @@ with tab4:
         wind_dir_list = ["All"] + list(df["wind_direction"].unique()) if "wind_direction" in df.columns else ["All"]
         selected_wind_dir = st.sidebar.selectbox("Wind Direction", wind_dir_list)
 
-        # Apply filtering logic safely
         filtered_df = df.copy()
         if selected_species != "All":
             filtered_df = filtered_df[filtered_df["species"] == selected_species]
@@ -375,7 +404,6 @@ with tab4:
         if selected_wind_dir != "All":
             filtered_df = filtered_df[filtered_df["wind_direction"] == selected_wind_dir]
 
-        # View format option
         view_mode = st.radio("View Layout", ["Card View with Images", "Row-by-Row Table (No Images)"], horizontal=True)
 
         if view_mode == "Row-by-Row Table (No Images)":
