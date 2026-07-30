@@ -477,7 +477,7 @@ with tab2:
     catches = load_json(DB_FILE)
     if catches:
         filtered_df = get_filtered_catches_df(catches, prefix="map_tab")
-        valid_catches = [row.to_dict() for _, row in filtered_df.iterrows() if row.get("latitude"] is not None and row.get("longitude") is not None]
+        valid_catches = [row.to_dict() for _, row in filtered_df.iterrows() if row.get("latitude") is not None and row.get("longitude") is not None]
         
         if valid_catches:
             avg_lat = sum(c["latitude"] for c in valid_catches) / len(valid_catches)
@@ -687,20 +687,12 @@ with tab4:
                             col_yes, col_no = st.columns(2)
                             with col_yes:
                                 if st.button("Yes", key=f"yes_del_{entry_id}_{idx}", type="primary"):
-                                    # Troubleshooting debug log on screen
-                                    st.write(f"DEBUG: Attempting to delete entry_id: {entry_id}")
                                     all_catches = load_json(DB_FILE)
-                                    initial_len = len(all_catches)
-                                    
                                     updated_catches = []
                                     for i, c in enumerate(all_catches):
                                         curr_id = str(c.get("id") or f"row_{i}")
                                         if curr_id != entry_id:
                                             updated_catches.append(c)
-                                        else:
-                                            st.write(f"DEBUG: Found and skipped matching entry at index {i} with id {curr_id}")
-                                            
-                                    st.write(f"DEBUG: Before: {initial_len}, After: {len(updated_catches)}")
                                     save_json(DB_FILE, updated_catches)
                                     st.session_state[confirm_key] = False
                                     st.success("Entry deleted!")
@@ -744,19 +736,12 @@ with tab4:
                         col_yes, col_no = st.columns(2)
                         with col_yes:
                             if st.button("Yes", key=f"yes_del_card_{entry_id}_{idx}", type="primary"):
-                                st.write(f"DEBUG: Attempting to delete entry_id: {entry_id}")
                                 all_catches = load_json(DB_FILE)
-                                initial_len = len(all_catches)
-                                
                                 updated_catches = []
                                 for i, c in enumerate(all_catches):
                                     curr_id = str(c.get("id") or f"card_{i}")
                                     if curr_id != entry_id:
                                         updated_catches.append(c)
-                                    else:
-                                        st.write(f"DEBUG: Found and skipped matching entry at index {i} with id {curr_id}")
-                                        
-                                st.write(f"DEBUG: Before: {initial_len}, After: {len(updated_catches)}")
                                 save_json(DB_FILE, updated_catches)
                                 st.session_state[confirm_card_key] = False
                                 st.success("Entry deleted!")
