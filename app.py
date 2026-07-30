@@ -298,7 +298,7 @@ with tab2:
     st.header("Catch Location Map")
     catches = load_json(DB_FILE)
     if catches:
-        valid_catches = [c for c in catches if c.get("latitude") and c.get("longitude")]
+        valid_catches = [c for c in catches if c.get("latitude"] and c.get("longitude")]
         if valid_catches:
             avg_lat = sum(c["latitude"] for c in valid_catches) / len(valid_catches)
             avg_lon = sum(c["longitude"] for c in valid_catches) / len(valid_catches)
@@ -422,7 +422,6 @@ with tab4:
             for idx, row in filtered_df.iterrows():
                 entry_id = row.get("id") or f"row_{idx}"
                 
-                # Format datetime to MM/DD/YYYY HH:MM AM/PM safely
                 dt_str = row.get('formatted_datetime', '')
                 if not dt_str:
                     try:
@@ -477,11 +476,17 @@ with tab4:
                             
                         if st.session_state.get(f"confirm_delete_{entry_id}", False):
                             st.warning("Are you sure you want to delete this?")
-                            if st.button("Yes, Delete", key=f"yes_del_{entry_id}", type="primary"):
-                                updated_catches = [c for c in catches if not (c.get("id") and c.get("id") == entry_id)]
-                                save_json(DB_FILE, updated_catches)
-                                st.success("Entry deleted!")
-                                st.rerun()
+                            col_yes, col_no = st.columns(2)
+                            with col_yes:
+                                if st.button("Yes", key=f"yes_del_{entry_id}", type="primary"):
+                                    updated_catches = [c for c in catches if not (c.get("id") and c.get("id") == entry_id)]
+                                    save_json(DB_FILE, updated_catches)
+                                    st.success("Entry deleted!")
+                                    st.rerun()
+                            with col_no:
+                                if st.button("No", key=f"no_del_{entry_id}"):
+                                    st.session_state[f"confirm_delete_{entry_id}"] = False
+                                    st.rerun()
         else:
             for idx, row in filtered_df.iterrows():
                 entry_id = row.get("id") or f"card_{idx}"
@@ -511,9 +516,15 @@ with tab4:
                         
                     if st.session_state.get(f"confirm_delete_card_{entry_id}", False):
                         st.warning("Are you sure you want to delete this?")
-                        if st.button("Yes, Delete", key=f"yes_del_card_{entry_id}", type="primary"):
-                            updated_catches = [c for c in catches if not (c.get("id") and c.get("id") == entry_id)]
-                            save_json(DB_FILE, updated_catches)
-                            st.success("Entry deleted!")
-                            st.rerun()
+                        col_yes, col_no = st.columns(2)
+                        with col_yes:
+                            if st.button("Yes", key=f"yes_del_card_{entry_id}", type="primary"):
+                                updated_catches = [c for c in catches if not (c.get("id") and c.get("id") == entry_id)]
+                                save_json(DB_FILE, updated_catches)
+                                st.success("Entry deleted!")
+                                st.rerun()
+                        with col_no:
+                            if st.button("No", key=f"no_del_card_{entry_id}"):
+                                st.session_state[f"confirm_delete_card_{entry_id}"] = False
+                                st.rerun()
                 st.divider()
