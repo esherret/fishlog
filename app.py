@@ -334,7 +334,7 @@ with tab1:
                     st.success(f"Added and selected: {new_lure_name}")
                     st.rerun()
                 else:
-                    st.error("Please provide both a name and an image for the new lure.")
+            v        st.error("Please provide both a name and an image for the new lure.")
 
         selected_lure = st.session_state.selected_lure_cache
 
@@ -390,8 +390,10 @@ with tab2:
 
             for c in valid_catches:
                 img_tag = ""
-                if os.path.exists(c.get("image_path", "")):
-                    img_tag = f'<img src="app/static/{c["image_path"]}" width="150px" style="border-radius:5px; margin-bottom:5px;"/><br>'
+                img_p = c.get("image_path", "")
+                if img_p and os.path.exists(img_p):
+                    # Use absolute file URL or relative path handled correctly by Streamlit static file serving
+                    img_tag = f'<img src="app/static/{img_p}" width="150px" style="border-radius:5px; margin-bottom:5px;"/><br>'
                 
                 dt_disp = c.get('formatted_datetime')
                 if not dt_disp:
