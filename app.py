@@ -298,7 +298,7 @@ with tab2:
     st.header("Catch Location Map")
     catches = load_json(DB_FILE)
     if catches:
-        valid_catches = [c for c in catches if c.get("latitude"] and c.get("longitude")]
+        valid_catches = [c for c in catches if c.get("latitude") and c.get("longitude")]
         if valid_catches:
             avg_lat = sum(c["latitude"] for c in valid_catches) / len(valid_catches)
             avg_lon = sum(c["longitude"] for c in valid_catches) / len(valid_catches)
