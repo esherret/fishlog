@@ -346,13 +346,40 @@ def process_image_orientation(image_file, rotation_angle=0):
     return image
 
 
+def _convert_to_degrees(value):
+    d = float(value[0].num) / float(value[0].den)
+    m = float(value[1].num) / float(value[1].den)
+    s = float(value[2].num) / float(value[2].den)
+    return d + (m / 60.0) + (s / 3600.0)
+
+
 def extract_exif(image_file):
     try:
         image = Image.open(image_file)
         exif_data = image._getexif()
         if not exif_data:
             return datetime.now(), None, None
-        return datetime.now(), None, None
+
+        dt_str = exif_data.get(36867) or exif_data.get(306)
+        dt = datetime.strptime(dt_str, "%Y:%m:%d %H:%M:%S") if dt_str else datetime.now()
+
+        lat, lon = None, None
+        gps_info = exif_data.get(34853)
+        if gps_info:
+            lat_data = gps_info.get(2)
+            lat_ref = gps_info.get(1)
+            lon_data = gps_info.get(4)
+            lon_ref = gps_info.get(3)
+
+            if lat_data and lat_ref and lon_data and lon_ref:
+                lat = _convert_to_degrees(lat_data)
+                if lat_ref != "N":
+                    lat = -lat
+                lon = _convert_to_degrees(lon_data)
+                if lon_ref != "E":
+                    lon = -lon
+
+        return dt, lat, lon
     except Exception:
         return datetime.now(), None, None
 
@@ -495,9 +522,9 @@ with tab1:
         st.write("📍 **Catch Location:**")
         col_lat, col_lon = st.columns(2)
         with col_lat:
-            manual_lat = st.number_input("Latitude", value=28.39, format="%.6f", key="c_lat")
+            manual_lat = st.number_input("Latitude", value=lat if lat is not None else 28.39, format="%.6f", key="c_lat")
         with col_lon:
-            manual_lon = st.number_input("Longitude", value=float(lon) if lon else -80.60, format="%.6f", key="catch_lon_input")
+            manual_lon = st.number_input("Longitude", value=lon if lon is not None else -80.60, format="%.6f", key="catch_lon_input")
         
         m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="250px", tiles="Esri.WorldImagery")
         fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
@@ -703,7 +730,7 @@ with tab4:
                     save_all_catches_raw(all_raw)
 
                     samples = load_species_samples()
-                    updated_samples = [s for s in samples if s.get("catch_id") not in deleted_ids]
+                    updated_samples = [s for s in samples if s.get("catch_id"] not in deleted_ids]
                     save_species_samples_table(updated_samples)
 
                     st.success(f"Successfully moved {len(selected_rows)} selected catch(es) to Recycle Bin!")
