@@ -137,9 +137,7 @@ def get_tide_info(lat, lon, dt):
     if not lat or not lon:
         return "Tide info unavailable (No GPS)"
     try:
-        # Approximate tide stage calculation based on lunar cycle and time offset
-        # Fallback query simulation for NOAA CO-OPS nearest station can be plugged here.
-        hour_offset = (dt.hour + dt.minute / 60.0) % 12.42 # M2 tidal constituent cycle ~12.42 hours
+        hour_offset = (dt.hour + dt.minute / 60.0) % 12.42
         if hour_offset < 3.1:
             return "Incoming (Rising)"
         elif hour_offset < 6.2:
@@ -180,7 +178,6 @@ def get_moon_phase(dt):
 
 # Helper: Automatic Species and Lure Recognition Mock/Heuristic
 def recognize_fish_and_lure(image_file, lures):
-    # Heuristic template matching placeholder using image name/properties or smart defaults
     detected_species = "Snook"
     detected_lure = lures[0]["name"] if lures else None
     return detected_species, detected_lure
@@ -193,8 +190,7 @@ tab1, tab2, tab3, tab4 = st.tabs(["🎣 Log a Catch", "🗺️ Catch Map", "🧩
 with tab1:
     st.header("Log a New Catch")
 
-    # Fast upload option with state caching to prevent long rendering blocking lags
-    upload_method = st.radio("Input Method", ["Camera", "Gallery Upload"], horizontal=True)
+    upload_method = st.radio("Input Method", ["Camera", "Gallery Upload"], horizontal=True, key="upload_method_radio")
     
     catch_image_file = None
     if upload_method == "Camera":
@@ -203,16 +199,13 @@ with tab1:
         catch_image_file = st.file_uploader("Choose catch photo from gallery", type=["jpg", "jpeg", "png"])
 
     if catch_image_file:
-        # Rotation control in edit menu
         rotation = st.selectbox("Rotate Image (Edit Menu)", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°")
         
-        # Load and process orientation/rotation cleanly
         raw_image = Image.open(catch_image_file)
         processed_image = process_image_orientation(raw_image, rotation)
         
         st.image(processed_image, caption="Processed Catch Photo", width=350)
 
-        # Extract metadata automatically
         dt, lat, lon = extract_exif(catch_image_file)
         
         st.subheader("Extracted Details")
@@ -230,33 +223,32 @@ with tab1:
         formatted_datetime_str = combined_dt.strftime("%d/%m/%Y %I:%M %p")
         st.write(f"**Logged Timestamp:** {formatted_datetime_str}")
 
-        # Duplicate check (within 3 minute window)
         catches = load_json(DB_FILE)
         is_duplicate = False
         for c in catches:
-            existing_dt = datetime.strptime(f"{c['date']} {c['time']}", "%Y-%m-%d %H:%M:%S")
-            if abs((combined_dt - existing_dt).total_seconds()) <= 180:
-                is_duplicate = True
-                break
+            try:
+                existing_dt = datetime.strptime(f"{c['date']} {c['time']}", "%Y-%m-%d %H:%M:%S")
+                if abs((combined_dt - existing_dt).total_seconds()) <= 180:
+                    is_duplicate = True
+                    break
+            except Exception:
+                continue
         
         if is_duplicate:
             st.warning("⚠️ **Warning:** Another catch entry exists within a 3-minute window of this timestamp. You might be adding duplicate logs for the same fish!")
 
-        # Environmental Data Fetching
         weather_desc, wind_speed_str, wind_dir = get_nws_weather(manual_lat, manual_lon)
         moon_phase = get_moon_phase(combined_dt)
         tide_info = get_tide_info(manual_lat, manual_lon, combined_dt)
 
         st.info(f"🌤️ **Weather:** {weather_desc} | 💨 **Wind:** {wind_speed_str} {wind_dir} | 🌊 **Tide:** {tide_info} | 🌙 **Moon:** {moon_phase}")
 
-        # AI Recognition integration attempt
         lures = load_json(LURES_FILE)
         rec_species, rec_lure = recognize_fish_and_lure(catch_image_file, lures)
 
         species = st.text_input("Fish Species", value=rec_species)
         length = st.slider("Length (Inches)", min_value=0.0, max_value=40.0, value=15.0, step=0.5)
 
-        # Lure mapping & inventory fallback prompt
         selected_lure = None
         if lures:
             lure_names = [l["name"] for l in lures]
@@ -354,9 +346,13 @@ with tab4:
     else:
         df = pd.DataFrame(catches)
         
+        # Ensure 'tide' column exists safely if older records are present
+        if "tide" not in df.columns:
+            df["tide"] = "N/A"
+
         # Sidebar Filters
         st.sidebar.header("Filter Log Entries")
-        species_list = ["All"] + list(df["species"].unique())
+        species_list = ["All"] + list(df["species"].unique()) if "species" in df.columns else ["All"]
         selected_species = st.sidebar.selectbox("Species", species_list)
         
         min_size_filter = st.sidebar.slider("Minimum Size (Inches)", 0.0, 40.0, 0.0, 0.5)
@@ -369,7 +365,7 @@ with tab4:
         wind_dir_list = ["All"] + list(df["wind_direction"].unique()) if "wind_direction" in df.columns else ["All"]
         selected_wind_dir = st.sidebar.selectbox("Wind Direction", wind_dir_list)
 
-        # Apply filtering logic
+        # Apply filtering logic safely
         filtered_df = df.copy()
         if selected_species != "All":
             filtered_df = filtered_df[filtered_df["species"] == selected_species]
@@ -384,24 +380,25 @@ with tab4:
 
         if view_mode == "Row-by-Row Table (No Images)":
             display_cols = ["date", "time", "species", "length", "lure", "weather", "wind_speed", "wind_direction", "tide", "moon_phase"]
-            st.dataframe(filtered_df[display_cols], use_container_width=True)
+            available_display_cols = [col for col in display_cols if col in filtered_df.columns]
+            st.dataframe(filtered_df[available_display_cols], use_container_width=True)
         else:
             for _, row in filtered_df.iterrows():
                 col1, col2, col3 = st.columns([1, 2, 1])
                 with col1:
-                    if os.path.exists(row["image_path"]):
-                        st.image(row["image_path"], width=180)
+                    img_p = row.get("image_path")
+                    if img_p and os.path.exists(img_p):
+                        st.image(img_p, width=180)
                 with col2:
-                    st.write(f"**Species:** {row['species']} ({row['length']} inches)")
-                    st.write(f"**Date/Time:** {row.get('formatted_datetime', row['date'] + ' ' + row['time'])}")
-                    st.write(f"**Lure:** {row['lure']}")
-                    st.write(f"**Weather:** {row['weather']} | **Wind:** {row['wind_speed']} {row['wind_direction']}")
-                    st.write(f"**Tide:** {row['tide']} | **Moon:** {row['moon_phase']}")
+                    st.write(f"**Species:** {row.get('species', 'N/A')} ({row.get('length', 0)} inches)")
+                    st.write(f"**Date/Time:** {row.get('formatted_datetime', str(row.get('date', '')) + ' ' + str(row.get('time', '')))}")
+                    st.write(f"**Lure:** {row.get('lure', 'N/A')}")
+                    st.write(f"**Weather:** {row.get('weather', 'N/A')} | **Wind:** {row.get('wind_speed', 'N/A')} {row.get('wind_direction', 'N/A')}")
+                    st.write(f"**Tide:** {row.get('tide', 'N/A')} | **Moon:** {row.get('moon_phase', 'N/A')}")
                 with col3:
-                    # Edit & Delete workflows
-                    entry_id = row["id"]
-                    if st.button("Delete", key=f"del_{entry_id}"):
-                        updated_catches = [c for c in catches if c["id"] != entry_id]
+                    entry_id = row.get("id")
+                    if entry_id and st.button("Delete", key=f"del_{entry_id}"):
+                        updated_catches = [c for c in catches if c.get("id") != entry_id]
                         save_json(DB_FILE, updated_catches)
                         st.success("Entry deleted!")
                         st.rerun()
