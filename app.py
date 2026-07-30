@@ -568,7 +568,7 @@ with tab2:
     catches = load_catches()
     if catches:
         filtered_df = get_filtered_catches_df(catches, prefix="map_tab")
-        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude"] is not None and r.get("longitude") is not None]
+        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
         if valid:
             m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11)
             fish_icon = folium.CustomIcon(
@@ -849,7 +849,6 @@ if recognition_tab:
         st.header("🧬 Fish Recognition Accuracy Library")
         st.write("Review, manage, and add reference sample images used by the heuristic model to improve species identification accuracy.")
         
-        # Form to manually add new fish recognition reference images
         with st.form("add_recognition_sample_form", clear_on_submit=True):
             st.subheader("➕ Add New Recognition Reference Sample")
             new_sample_species = st.text_input("Fish Species Name")
