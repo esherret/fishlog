@@ -472,7 +472,6 @@ def get_filtered_catches_df(catches, prefix="global"):
 with tab1:
     st.header("Log a New Catch")
     
-    # Use st.form to properly reset and clear all input fields on successful submission
     with st.form("log_catch_form", clear_on_submit=True):
         upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, key="upload_method_radio")
         catch_image_file = st.camera_input("Take photo", key="cam_input") if upload_method == "Camera" else st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key="file_input")
@@ -887,7 +886,7 @@ if recognition_tab:
                     st.write(f"**Sample ID:** {sample.get('id')[:6]}")
                 with col_act:
                     if st.button("Delete Reference", key=f"del_sample_{s_idx}"):
-                        updated_samples = [s for s in samples if s.get("id"] != sample.get("id")]
+                        updated_samples = [s for s in samples if s.get("id") != sample.get("id")]
                         save_species_samples_table(updated_samples)
                         st.success("Reference sample removed!")
                         st.rerun()
