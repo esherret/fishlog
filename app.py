@@ -493,8 +493,11 @@ with tab1:
             log_time = st.time_input("Time", value=dt.time() if dt else datetime.now().time(), key="c_time")
 
         st.write("📍 **Catch Location:**")
-        manual_lat = 28.39
-        manual_lon = float(lon) if lon else -80.60
+        col_lat, col_lon = st.columns(2)
+        with col_lat:
+            manual_lat = st.number_input("Latitude", value=28.39, format="%.6f", key="c_lat")
+        with col_lon:
+            manual_lon = st.number_input("Longitude", value=float(lon) if lon else -80.60, format="%.6f", key="catch_lon_input")
         
         m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="250px", tiles="Esri.WorldImagery")
         fish_icon = folium.CustomIcon(
@@ -576,7 +579,7 @@ with tab1:
             
             keys_to_clear = [
                 "cam_input_widget", "file_input_widget", "rot_sel", "c_date", "c_time",
-                "correct_id_check", "c_species", "c_species_sb", "c_len", "c_lure"
+                "c_lat", "catch_lon_input", "correct_id_check", "c_species", "c_species_sb", "c_len", "c_lure"
             ]
             for k in keys_to_clear:
                 if k in st.session_state:
