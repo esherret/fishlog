@@ -41,13 +41,13 @@ st.markdown("""
         height: 100%;
     }
 
-    /* Enforce 2 columns strictly on mobile viewports for the lure picker */
+    /* Enforce 2 columns strictly on mobile viewports for the lure picker grid */
     @media (max-width: 768px) {
-        div.row-widget.stHorizontal {
-            flex-direction: row !important;
+        div[data-testid="stHorizontalBlock"] {
+            display: flex !important;
             flex-wrap: wrap !important;
         }
-        div.row-widget.stHorizontal > div {
+        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
             flex: 0 0 50% !important;
             max-width: 50% !important;
             min-width: 50% !important;
@@ -396,16 +396,19 @@ with tab1:
 
         if st.session_state.get("picking_lure_visual", False):
             st.markdown("---")
-            st.info("Click on any lure picture below to select it:")
+            st.info("Click on any lure picture to select it:")
             if lures:
                 lure_cols = st.columns(2)
                 for idx, l in enumerate(lures):
                     with lure_cols[idx % 2]:
-                        st.image(l["image_path"], width=130, caption=l["name"])
-                        if st.button(f"Select {l['name']}", key=f"pic_pick_{idx}"):
-                            st.session_state.selected_lure_cache = l["name"]
-                            st.session_state.picking_lure_visual = False
-                            st.rerun()
+                        with st.container():
+                            if os.path.exists(l.get("image_path", "")):
+                                st.image(l["image_path"], width='stretch')
+                            if st.button(f"🎣 {l['name']}", key=f"pic_pick_{idx}", width='stretch'):
+                                st.session_state.selected_lure_cache = l["name"]
+                                st.session_state.picking_lure_visual = False
+                                st.success(f"Selected {l['name']}!")
+                                st.rerun()
             else:
                 st.warning("No lures in inventory. Please add one below.")
             
@@ -559,9 +562,9 @@ with tab3:
             with cols[idx % 2]:
                 with st.container():
                     if os.path.exists(lure.get("image_path", "")):
-                        st.image(lure["image_path"], use_container_width=True)
+                        st.image(lure["image_path"], width='stretch')
                     
-                    if st.button(f"🎣 {lure['name']}", key=f"select_lure_card_{idx}", use_container_width=True):
+                    if st.button(f"🎣 {lure['name']}", key=f"select_lure_card_{idx}", width='stretch'):
                         st.session_state.selected_lure_cache = lure["name"]
                         st.success(f"Selected {lure['name']}! Go to 'Log a Catch' tab.")
 
@@ -672,10 +675,14 @@ with tab4:
                             st.rerun()
 
                         st.markdown("---")
-                        if st.button("Delete Entry", key=f"btn_del_{entry_id}_{idx}", type="secondary"):
-                            st.session_state[f"confirm_delete_{entry_id}_{idx}"] = True
+                        # Fixed unique state key for row-by-row deletion
+                        del_btn_key = f"btn_del_{entry_id}_{idx}"
+                        confirm_key = f"confirm_delete_{entry_id}_{idx}"
+                        
+                        if st.button("Delete Entry", key=del_btn_key, type="secondary"):
+                            st.session_state[confirm_key] = True
                             
-                        if st.session_state.get(f"confirm_delete_{entry_id}_{idx}", False):
+                        if st.session_state.get(confirm_key, False):
                             st.warning("Are you sure you want to delete this?")
                             col_yes, col_no = st.columns(2)
                             with col_yes:
@@ -686,7 +693,7 @@ with tab4:
                                     st.rerun()
                             with col_no:
                                 if st.button("No", key=f"no_del_{entry_id}_{idx}"):
-                                    st.session_state[f"confirm_delete_{entry_id}_{idx}"] = False
+                                    st.session_state[confirm_key] = False
                                     st.rerun()
         else:
             for idx, row in filtered_df.iterrows():
@@ -712,10 +719,14 @@ with tab4:
                     st.write(f"**Weather:** {row.get('weather', 'N/A')} | **Wind:** {row.get('wind_speed', 'N/A')} {row.get('wind_direction', 'N/A')}")
                     st.write(f"**Tide:** {row.get('tide', 'N/A')} | **Moon:** {row.get('moon_phase', 'N/A')}")
                 with col3:
-                    if st.button("Delete Entry", key=f"btn_del_card_{entry_id}_{idx}", type="secondary"):
-                        st.session_state[f"confirm_delete_card_{entry_id}_{idx}"] = True
+                    # Fixed unique state key for card-by-card deletion
+                    del_card_btn_key = f"btn_del_card_{entry_id}_{idx}"
+                    confirm_card_key = f"confirm_delete_card_{entry_id}_{idx}"
+                    
+                    if st.button("Delete Entry", key=del_card_btn_key, type="secondary"):
+                        st.session_state[confirm_card_key] = True
                         
-                    if st.session_state.get(f"confirm_delete_card_{entry_id}_{idx}", False):
+                    if st.session_state.get(confirm_card_key, False):
                         st.warning("Are you sure you want to delete this?")
                         col_yes, col_no = st.columns(2)
                         with col_yes:
@@ -726,6 +737,6 @@ with tab4:
                                 st.rerun()
                         with col_no:
                             if st.button("No", key=f"no_del_card_{entry_id}_{idx}"):
-                                st.session_state[f"confirm_delete_card_{entry_id}_{idx}"] = False
+                                st.session_state[confirm_card_key] = False
                                 st.rerun()
                 st.divider()
