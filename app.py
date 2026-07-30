@@ -409,9 +409,52 @@ with tab4:
         view_mode = st.radio("View Layout", ["Card View with Images", "Row-by-Row Table (No Images)"], horizontal=True)
 
         if view_mode == "Row-by-Row Table (No Images)":
-            display_cols = ["date", "time", "species", "length", "lure", "weather", "wind_speed", "wind_direction", "tide", "moon_phase"]
-            available_display_cols = [col for col in display_cols if col in filtered_df.columns]
-            st.dataframe(filtered_df[available_display_cols], use_container_width=True)
+            st.write("Click on any entry below to view its card, edit details, or delete it.")
+            
+            # Interactive row selection helper
+            for _, row in filtered_df.iterrows():
+                entry_id = row.get("id")
+                summary_label = f"📅 {row.get('date')} {row.get('time')} | 🐟 {row.get('species')} ({row.get('length')} in) | 🎣 {row.get('lure')}"
+                
+                with st.expander(summary_label):
+                    col1, col2, col3 = st.columns([1, 2, 1])
+                    with col1:
+                        img_p = row.get("image_path")
+                        if img_p and os.path.exists(img_p):
+                            st.image(img_p, width=180)
+                    with col2:
+                        st.write(f"**Species:** {row.get('species', 'N/A')} ({row.get('length', 0)} inches)")
+                        st.write(f"**Date/Time:** {row.get('formatted_datetime', str(row.get('date', '')) + ' ' + str(row.get('time', '')))}")
+                        st.write(f"**Lure:** {row.get('lure', 'N/A')}")
+                        st.write(f"**Weather:** {row.get('weather', 'N/A')} | **Wind:** {row.get('wind_speed', 'N/A')} {row.get('wind_direction', 'N/A')}")
+                        st.write(f"**Tide:** {row.get('tide', 'N/A')} | **Moon:** {row.get('moon_phase', 'N/A')}")
+                    with col3:
+                        st.subheader("Management")
+                        edit_mode = st.checkbox("Edit Entry", key=f"edit_toggle_{entry_id}")
+                        
+                        if edit_mode:
+                            new_species = st.text_input("Edit Species", value=row.get('species', ''), key=f"edit_sp_{entry_id}")
+                            new_length = st.slider("Edit Length (Inches)", 0.0, 40.0, float(row.get('length', 15.0)), 0.5, key=f"edit_len_{entry_id}")
+                            new_lure = st.text_input("Edit Lure", value=row.get('lure', ''), key=f"edit_lure_{entry_id}")
+                            
+                            if st.button("Save Changes", key=f"save_edit_{entry_id}"):
+                                for c in catches:
+                                    if c.get("id") == entry_id:
+                                        c["species"] = new_species
+                                        c["length"] = new_length
+                                        c["lure"] = new_lure
+                                save_json(DB_FILE, catches)
+                                st.success("Entry updated successfully!")
+                                st.rerun()
+
+                        st.markdown("---")
+                        confirm_del = st.checkbox("Are you sure you want to delete this?", key=f"conf_del_{entry_id}")
+                        if confirm_del:
+                            if st.button("Confirm Delete", key=f"btn_del_{entry_id}", type="primary"):
+                                updated_catches = [c for c in catches if c.get("id") != entry_id]
+                                save_json(DB_FILE, updated_catches)
+                                st.success("Entry deleted!")
+                                st.rerun()
         else:
             for _, row in filtered_df.iterrows():
                 col1, col2, col3 = st.columns([1, 2, 1])
@@ -427,9 +470,11 @@ with tab4:
                     st.write(f"**Tide:** {row.get('tide', 'N/A')} | **Moon:** {row.get('moon_phase', 'N/A')}")
                 with col3:
                     entry_id = row.get("id")
-                    if entry_id and st.button("Delete", key=f"del_{entry_id}"):
-                        updated_catches = [c for c in catches if c.get("id") != entry_id]
-                        save_json(DB_FILE, updated_catches)
-                        st.success("Entry deleted!")
-                        st.rerun()
+                    if entry_id:
+                        confirm_del_card = st.checkbox("Are you sure you want to delete this?", key=f"conf_del_card_{entry_id}")
+                        if confirm_del_card and st.button("Confirm Delete", key=f"del_card_{entry_id}", type="primary"):
+                            updated_catches = [c for c in catches if c.get("id") != entry_id]
+                            save_json(DB_FILE, updated_catches)
+                            st.success("Entry deleted!")
+                            st.rerun()
                 st.divider()
