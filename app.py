@@ -12,7 +12,7 @@ import folium
 # Configure page
 st.set_page_config(page_title="Fish Catch Log", page_icon="🎣", layout="wide")
 
-# Custom CSS for black slider thumbs, tracks, sidebar filter icon, and responsive 2-column mobile lure grid
+# Custom CSS for black slider thumbs, tracks, sidebar filter icon, and responsive mobile lure grid (exactly 2 per row)
 st.markdown("""
 <style>
     /* Slider track and thumb styling for black accent */
@@ -41,7 +41,7 @@ st.markdown("""
         height: 100%;
     }
 
-    /* Enforce strict 2-column layout (2 lures per line) specifically on smartphones/mobile viewports */
+    /* Enforce 2 columns strictly on mobile viewports for the lure picker */
     @media (max-width: 768px) {
         div.row-widget.stHorizontal {
             flex-direction: row !important;
@@ -551,52 +551,52 @@ with tab3:
             st.success(f"Added lure: {lure_name}")
             st.rerun()
 
-    st.subheader("Your Lures (Click expander to Edit or Delete)")
+    st.subheader("Your Lures")
     lures = load_json(LURES_FILE)
     if lures:
+        cols = st.columns(2)
         for idx, lure in enumerate(lures):
-            lure_id = f"lure_exp_{idx}"
-            summary_label = f"🎣 {lure['name']}"
-            
-            with st.expander(summary_label):
-                col_l1, col_l2, col_l3 = st.columns([1, 2, 1])
-                with col_l1:
+            with cols[idx % 2]:
+                with st.container():
                     if os.path.exists(lure.get("image_path", "")):
-                        st.image(lure["image_path"], width=120)
-                with col_l2:
-                    st.write(f"**Lure Name:** {lure['name']}")
+                        st.image(lure["image_path"], use_container_width=True)
                     
-                    new_lure_name = st.text_input("Edit Lure Name", value=lure['name'], key=f"edit_lure_name_{idx}")
-                    new_lure_img = st.file_uploader("Change Lure Image", type=["jpg", "jpeg", "png"], key=f"edit_lure_img_{idx}")
-                    
-                    if st.button("Save Lure Changes", key=f"save_lure_{idx}"):
-                        lure["name"] = new_lure_name
-                        if new_lure_img:
-                            img_filename = f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-                            img_path = os.path.join(LURES_DIR, img_filename)
-                            proc_img = process_image_orientation(new_lure_img)
-                            proc_img.save(img_path, optimize=True, quality=80)
-                            lure["image_path"] = img_path
-                        save_json(LURES_FILE, lures)
-                        st.success("Lure updated successfully!")
-                        st.rerun()
-                with col_l3:
-                    if st.button("Delete Lure", key=f"btn_del_lure_{idx}", type="secondary"):
-                        st.session_state[f"confirm_delete_lure_{idx}"] = True
+                    if st.button(f"🎣 {lure['name']}", key=f"select_lure_card_{idx}", use_container_width=True):
+                        st.session_state.selected_lure_cache = lure["name"]
+                        st.success(f"Selected {lure['name']}! Go to 'Log a Catch' tab.")
+
+                    with st.expander("Edit / Delete"):
+                        new_lure_name = st.text_input("New Name", value=lure['name'], key=f"edit_lure_name_{idx}")
+                        new_lure_img = st.file_uploader("New Image", type=["jpg", "jpeg", "png"], key=f"edit_lure_img_{idx}")
                         
-                    if st.session_state.get(f"confirm_delete_lure_{idx}", False):
-                        st.warning("Are you sure you want to delete this lure?")
-                        col_yes, col_no = st.columns(2)
-                        with col_yes:
-                            if st.button("Yes", key=f"yes_del_lure_{idx}", type="primary"):
-                                updated_lures = [l for i, l in enumerate(lures) if i != idx]
-                                save_json(LURES_FILE, updated_lures)
-                                st.success("Lure deleted!")
-                                st.rerun()
-                        with col_no:
-                            if st.button("No", key=f"no_del_lure_{idx}"):
-                                st.session_state[f"confirm_delete_lure_{idx}"] = False
-                                st.rerun()
+                        if st.button("Save Changes", key=f"save_lure_{idx}"):
+                            lure["name"] = new_lure_name
+                            if new_lure_img:
+                                img_filename = f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                                img_path = os.path.join(LURES_DIR, img_filename)
+                                proc_img = process_image_orientation(new_lure_img)
+                                proc_img.save(img_path, optimize=True, quality=80)
+                                lure["image_path"] = img_path
+                            save_json(LURES_FILE, lures)
+                            st.success("Lure updated!")
+                            st.rerun()
+
+                        if st.button("Delete Lure", key=f"btn_del_lure_{idx}", type="secondary"):
+                            st.session_state[f"confirm_delete_lure_{idx}"] = True
+                            
+                        if st.session_state.get(f"confirm_delete_lure_{idx}", False):
+                            st.warning("Delete this lure?")
+                            col_yes, col_no = st.columns(2)
+                            with col_yes:
+                                if st.button("Yes", key=f"yes_del_lure_{idx}", type="primary"):
+                                    updated_lures = [l for i, l in enumerate(lures) if i != idx]
+                                    save_json(LURES_FILE, updated_lures)
+                                    st.success("Deleted!")
+                                    st.rerun()
+                            with col_no:
+                                if st.button("No", key=f"no_del_lure_{idx}"):
+                                    st.session_state[f"confirm_delete_lure_{idx}"] = False
+                                    st.rerun()
     else:
         st.info("No lures in inventory yet.")
 
