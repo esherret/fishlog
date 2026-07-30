@@ -403,8 +403,8 @@ with tab1:
                     with lure_cols[idx % 2]:
                         with st.container():
                             if os.path.exists(l.get("image_path", "")):
-                                st.image(l["image_path"], width="stretch")
-                            if st.button(f"🎣 {l['name']}", key=f"pic_pick_{idx}", width="stretch"):
+                                st.image(l["image_path"], width='stretch')
+                            if st.button(f"🎣 {l['name']}", key=f"pic_pick_{idx}", width='stretch'):
                                 st.session_state.selected_lure_cache = l["name"]
                                 st.session_state.picking_lure_visual = False
                                 st.success(f"Selected {l['name']}!")
@@ -562,9 +562,9 @@ with tab3:
             with cols[idx % 2]:
                 with st.container():
                     if os.path.exists(lure.get("image_path", "")):
-                        st.image(lure["image_path"], width="stretch")
+                        st.image(lure["image_path"], width='stretch')
                     
-                    if st.button(f"🎣 {lure['name']}", key=f"select_lure_card_{idx}", width="stretch"):
+                    if st.button(f"🎣 {lure['name']}", key=f"select_lure_card_{idx}", width='stretch'):
                         st.session_state.selected_lure_cache = lure["name"]
                         st.success(f"Selected {lure['name']}! Go to 'Log a Catch' tab.")
 
@@ -688,8 +688,8 @@ with tab4:
                                 if st.button("Yes", key=f"yes_del_{entry_id}_{idx}", type="primary"):
                                     updated_catches = [c for i, c in enumerate(catches) if str(c.get("id") or f"row_{i}") != entry_id]
                                     save_json(DB_FILE, updated_catches)
-                                    st.success("Entry deleted!")
                                     st.session_state[confirm_key] = False
+                                    st.success("Entry deleted!")
                                     st.rerun()
                             with col_no:
                                 if st.button("No", key=f"no_del_{entry_id}_{idx}"):
@@ -732,8 +732,8 @@ with tab4:
                             if st.button("Yes", key=f"yes_del_card_{entry_id}_{idx}", type="primary"):
                                 updated_catches = [c for i, c in enumerate(catches) if str(c.get("id") or f"card_{i}") != entry_id]
                                 save_json(DB_FILE, updated_catches)
-                                st.success("Entry deleted!")
                                 st.session_state[confirm_card_key] = False
+                                st.success("Entry deleted!")
                                 st.rerun()
                         with col_no:
                             if st.button("No", key=f"no_del_card_{entry_id}_{idx}"):
