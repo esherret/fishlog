@@ -39,7 +39,7 @@ def save_json(filepath, data):
         json.dump(data, f, indent=4)
 
 
-# Helper: Correct image orientation from EXIF and apply rotation if needed (Optimized & Downscaled for speed)
+# Helper: Ultra-fast image compression and downscaling to eliminate upload lag & convert RGBA to RGB for JPEGs
 def process_image_orientation(image_file, rotation_angle=0):
     try:
         image = Image.open(image_file)
@@ -47,8 +47,12 @@ def process_image_orientation(image_file, rotation_angle=0):
     except Exception:
         image = Image.open(image_file)
     
-    # Resize large phone images immediately to speed up browser rendering and save storage
-    image.thumbnail((1200, 1200))
+    # Convert RGBA/P images to RGB so they can be saved as JPEGs without errors
+    if image.mode in ("RGBA", "P"):
+        image = image.convert("RGB")
+    
+    # Aggressively downscale to 800x800 max for instant rendering and zero lag
+    image.thumbnail((800, 800))
     
     if rotation_angle != 0:
         image = image.rotate(rotation_angle, expand=True)
@@ -232,9 +236,7 @@ with tab1:
     if catch_image_file:
         rotation = st.selectbox("Rotate Image (Edit Menu)", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°")
         
-        # Process and downscale immediately to eliminate lag
         processed_image = process_image_orientation(catch_image_file, rotation)
-        
         st.image(processed_image, caption="Processed Catch Photo", width=350)
 
         dt, lat, lon = extract_exif(catch_image_file)
@@ -280,40 +282,68 @@ with tab1:
         species = st.text_input("Fish Species", value=rec_species)
         length = st.slider("Length (Inches)", min_value=0.0, max_value=40.0, value=15.0, step=0.5)
 
-        # Lure Selection & Quick-Add Feature
+        # Lure Selection & Visual Lure Picker Screen
         st.subheader("Lure Used")
         lure_names = [l["name"] for l in lures] if lures else []
-        lure_options = lure_names + ["+ Add New Lure..."]
         
-        default_idx = lure_names.index(rec_lure) if rec_lure in lure_names else 0
-        chosen_lure_option = st.selectbox("Select Lure", lure_options, index=default_idx if lure_names else 0)
+        if "selected_lure_cache" not in st.session_state:
+            st.session_state.selected_lure_cache = rec_lure if rec_lure in lure_names else (lure_names[0] if lure_names else "")
 
-        selected_lure = None
-        if chosen_lure_option == "+ Add New Lure...":
-            new_lure_name = st.text_input("New Lure Name")
-            new_lure_image = st.file_uploader("Upload New Lure Image", type=["jpg", "jpeg", "png"], key="new_lure_upload")
-            if new_lure_name and new_lure_image:
-                lure_img_filename = f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
-                lure_img_path = os.path.join(LURES_DIR, lure_img_filename)
-                proc_lure_img = process_image_orientation(new_lure_image)
-                proc_lure_img.save(lure_img_path)
-                
-                lures.append({"name": new_lure_name, "image_path": lure_img_path})
-                save_json(LURES_FILE, lures)
-                selected_lure = new_lure_name
-                st.success(f"Added and selected new lure: {new_lure_name}")
-            else:
-                selected_lure = new_lure_name if new_lure_name else "Custom Lure"
-        else:
-            selected_lure = chosen_lure_option
+        col_lure1, col_lure2 = st.columns([3, 1])
+        with col_lure1:
+            st.write(f"**Current Lure:** {st.session_state.selected_lure_cache if st.session_state.selected_lure_cache else 'None selected'}")
             for l in lures:
-                if l["name"] == selected_lure:
-                    st.image(l["image_path"], width=120, caption=l["name"])
+                if l["name"] == st.session_state.selected_lure_cache:
+                    st.image(l["image_path"], width=100, caption=l["name"])
+        with col_lure2:
+            if st.button("🖼️ Browse All Lures", key="browse_lures_btn"):
+                st.session_state.picking_lure_visual = True
+
+        if st.session_state.get("picking_lure_visual", False):
+            st.markdown("---")
+            st.info("Click on any lure picture below to select it:")
+            if lures:
+                lure_cols = st.columns(3)
+                for idx, l in enumerate(lures):
+                    with lure_cols[idx % 3]:
+                        st.image(l["image_path"], width=125, caption=l["name"])
+                        if st.button(f"Select {l['name']}", key=f"pic_pick_{idx}"):
+                            st.session_state.selected_lure_cache = l["name"]
+                            st.session_state.picking_lure_visual = False
+                            st.rerun()
+            else:
+                st.warning("No lures in inventory. Please add one below.")
+            
+            if st.button("Close Lure Gallery", key="close_lure_gallery"):
+                st.session_state.picking_lure_visual = False
+                st.rerun()
+            st.markdown("---")
+
+        # Quick Add New Lure Option
+        with st.expander("➕ Or Add a New Lure"):
+            new_lure_name = st.text_input("New Lure Name", key="quick_new_lure_name")
+            new_lure_image = st.file_uploader("Upload New Lure Image", type=["jpg", "jpeg", "png"], key="quick_new_lure_img")
+            if st.button("Save New Lure", key="quick_save_lure_btn"):
+                if new_lure_name and new_lure_image:
+                    lure_img_filename = f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+                    lure_img_path = os.path.join(LURES_DIR, lure_img_filename)
+                    proc_lure_img = process_image_orientation(new_lure_image)
+                    proc_lure_img.save(lure_img_path, optimize=True, quality=80)
+                    
+                    lures.append({"name": new_lure_name, "image_path": lure_img_path})
+                    save_json(LURES_FILE, lures)
+                    st.session_state.selected_lure_cache = new_lure_name
+                    st.success(f"Added and selected: {new_lure_name}")
+                    st.rerun()
+                else:
+                    st.error("Please provide both a name and an image for the new lure.")
+
+        selected_lure = st.session_state.selected_lure_cache
 
         if st.button("Save Catch Entry", type="primary"):
             img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
             img_path = os.path.join(CATCHES_DIR, img_filename)
-            processed_image.save(img_path, optimize=True, quality=85)
+            processed_image.save(img_path, optimize=True, quality=80)
 
             record = {
                 "id": img_filename,
@@ -407,7 +437,7 @@ with tab3:
             img_filename = f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
             img_path = os.path.join(LURES_DIR, img_filename)
             proc_lure_img = process_image_orientation(lure_image)
-            proc_lure_img.save(img_path, optimize=True, quality=85)
+            proc_lure_img.save(img_path, optimize=True, quality=80)
                 
             lures = load_json(LURES_FILE)
             lures.append({"name": lure_name, "image_path": img_path})
@@ -513,7 +543,7 @@ with tab4:
                                         img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
                                         img_path = os.path.join(CATCHES_DIR, img_filename)
                                         proc_img = process_image_orientation(new_image_file)
-                                        proc_img.save(img_path, optimize=True, quality=85)
+                                        proc_img.save(img_path, optimize=True, quality=80)
                                         c["image_path"] = img_path
                             save_json(DB_FILE, catches)
                             st.success("Entry updated successfully!")
