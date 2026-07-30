@@ -67,11 +67,13 @@ for d in [DATA_DIR, LURES_DIR, CATCHES_DIR]:
     os.makedirs(d, exist_ok=True)
 
 
-# Google Sheets Connection Helper using st.secrets
+# Google Sheets Connection Helper using st.secrets with escaped newline replacement
 def get_gspread_client():
     try:
         scope = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
         credentials_dict = dict(st.secrets["gcp_service_account"])
+        if "private_key" in credentials_dict:
+            credentials_dict["private_key"] = credentials_dict["private_key"].replace("\\n", "\n")
         creds = Credentials.from_service_account_info(credentials_dict, scopes=scope)
         client = gspread.authorize(creds)
         return client
