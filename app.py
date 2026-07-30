@@ -620,15 +620,23 @@ with tab4:
             st.write("Click on any entry below to view its card, edit details, or delete it.")
             
             for idx, row in filtered_df.iterrows():
-                entry_id = str(row.get("id") or f"row_{idx}")
+                # Identify exact record index in master list by matching unique criteria (date, time, latitude, longitude)
+                # This bypasses any DataFrame iteration index misalignment or missing ID keys.
+                record_id = row.get("id")
+                record_date = row.get("date")
+                record_time = row.get("time")
+                record_lat = row.get("latitude")
+                record_lon = row.get("longitude")
+
+                entry_key = f"row_{idx}_{record_date}_{record_time}"
                 
                 dt_str = row.get('formatted_datetime', '')
                 if not dt_str:
                     try:
-                        dt_obj = datetime.strptime(f"{row.get('date')} {row.get('time')}", "%Y-%m-%d %H:%M:%S")
+                        dt_obj = datetime.strptime(f"{record_date} {record_time}", "%Y-%m-%d %H:%M:%S")
                         dt_str = dt_obj.strftime("%m/%d/%Y %I:%M %p")
                     except Exception:
-                        dt_str = f"{row.get('date')} {row.get('time')}"
+                        dt_str = f"{record_date} {record_time}"
 
                 summary_label = f"📅 {dt_str} | 🐟 {row.get('species')} ({row.get('length')} in) | 🎣 {row.get('lure')}"
                 
@@ -651,17 +659,16 @@ with tab4:
                         current_length = float(row.get('length') or 15.0)
                         current_lure = str(row.get('lure') or '')
 
-                        new_species = st.text_input("Edit Species", value=current_species, key=f"edit_sp_{entry_id}_{idx}")
-                        new_length = st.slider("Edit Length (Inches)", 0.0, 40.0, current_length, 0.5, key=f"edit_len_{entry_id}_{idx}")
-                        new_lure = st.text_input("Edit Lure", value=current_lure, key=f"edit_lure_{entry_id}_{idx}")
+                        new_species = st.text_input("Edit Species", value=current_species, key=f"edit_sp_{entry_key}")
+                        new_length = st.slider("Edit Length (Inches)", 0.0, 40.0, current_length, 0.5, key=f"edit_len_{entry_key}")
+                        new_lure = st.text_input("Edit Lure", value=current_lure, key=f"edit_lure_{entry_key}")
                         
-                        new_image_file = st.file_uploader("Change Catch Image", type=["jpg", "jpeg", "png"], key=f"edit_img_{entry_id}_{idx}")
+                        new_image_file = st.file_uploader("Change Catch Image", type=["jpg", "jpeg", "png"], key=f"edit_img_{entry_key}")
                         
-                        if st.button("Save Changes", key=f"save_edit_{entry_id}_{idx}"):
+                        if st.button("Save Changes", key=f"save_edit_{entry_key}"):
                             all_catches = load_json(DB_FILE)
                             for c in all_catches:
-                                target_id = str(c.get("id") or f"row_{all_catches.index(c)}")
-                                if target_id == entry_id:
+                                if c.get("date") == record_date and c.get("time") == record_time and c.get("latitude") == record_lat and c.get("longitude") == record_lon:
                                     c["species"] = new_species
                                     c["length"] = new_length
                                     c["lure"] = new_lure
@@ -676,8 +683,8 @@ with tab4:
                             st.rerun()
 
                         st.markdown("---")
-                        del_btn_key = f"btn_del_{entry_id}_{idx}"
-                        confirm_key = f"confirm_delete_{entry_id}_{idx}"
+                        del_btn_key = f"btn_del_{entry_key}"
+                        confirm_key = f"confirm_delete_{entry_key}"
                         
                         if st.button("Delete Entry", key=del_btn_key, type="secondary"):
                             st.session_state[confirm_key] = True
@@ -686,38 +693,56 @@ with tab4:
                             st.warning("Are you sure you want to delete this?")
                             col_yes, col_no = st.columns(2)
                             with col_yes:
-                                if st.button("Yes", key=f"yes_del_{entry_id}_{idx}", type="primary"):
+                                if st.button("Yes", key=f"yes_del_{entry_key}", type="primary"):
                                     all_catches = load_json(DB_FILE)
                                     
-                                    # DEBUG DIAGNOSTIC FEEDBACK
-                                    st.info(f"DIAGNOSTIC - Target ID to match: {repr(entry_id)}")
-                                    st.info(f"DIAGNOSTIC - Total records in DB: {len(all_catches)}")
-                                    for db_idx, item in enumerate(all_catches):
-                                        st.write(f"Index {db_idx}: id={repr(item.get('id'))}, fallback_id={repr(f'row_{db_idx}')}")
+                                    # Filter out the exact matching record safely
+                                    updated_catches = [
+                                        c for c in all_catches 
+                                        not in (
+                                            c.get("date") == record_date and 
+                                            c.get("time") == record_time and 
+                                            c.get("latitude") == record_lat and 
+                                            c.get("longitude") == record_lon
+                                        )
+                                    ] if False else [] # Safe guard below
                                     
                                     updated_catches = []
-                                    for i, c in enumerate(all_catches):
-                                        curr_id = str(c.get("id") or f"row_{i}")
-                                        if curr_id != entry_id:
+                                    for c in all_catches:
+                                        match = (
+                                            c.get("date") == record_date and 
+                                            c.get("time") == record_time and 
+                                            c.get("latitude") == record_lat and 
+                                            c.get("longitude") == record_lon
+                                        )
+                                        if not match:
                                             updated_catches.append(c)
-                                    
+
                                     save_json(DB_FILE, updated_catches)
-                                    st.success(f"DIAGNOSTIC - Before: {len(all_catches)}, After: {len(updated_catches)}")
+                                    st.session_state[confirm_key] = False
+                                    st.success("Entry deleted!")
+                                    st.rerun()
                             with col_no:
-                                if st.button("No", key=f"no_del_{entry_id}_{idx}"):
+                                if st.button("No", key=f"no_del_{entry_key}"):
                                     st.session_state[confirm_key] = False
                                     st.rerun()
         else:
             for idx, row in filtered_df.iterrows():
-                entry_id = str(row.get("id") or f"card_{idx}")
+                record_id = row.get("id")
+                record_date = row.get("date")
+                record_time = row.get("time")
+                record_lat = row.get("latitude")
+                record_lon = row.get("longitude")
+
+                entry_key = f"card_{idx}_{record_date}_{record_time}"
                 
                 dt_str = row.get('formatted_datetime', '')
                 if not dt_str:
                     try:
-                        dt_obj = datetime.strptime(f"{row.get('date')} {row.get('time')}", "%Y-%m-%d %H:%M:%S")
+                        dt_obj = datetime.strptime(f"{record_date} {record_time}", "%Y-%m-%d %H:%M:%S")
                         dt_str = dt_obj.strftime("%m/%d/%Y %I:%M %p")
                     except Exception:
-                        dt_str = f"{row.get('date')} {row.get('time')}"
+                        dt_str = f"{record_date} {record_time}"
 
                 col1, col2, col3 = st.columns([1, 2, 1])
                 with col1:
@@ -731,8 +756,8 @@ with tab4:
                     st.write(f"**Weather:** {row.get('weather', 'N/A')} | **Wind:** {row.get('wind_speed', 'N/A')} {row.get('wind_direction', 'N/A')}")
                     st.write(f"**Tide:** {row.get('tide', 'N/A')} | **Moon:** {row.get('moon_phase', 'N/A')}")
                 with col3:
-                    del_card_btn_key = f"btn_del_card_{entry_id}_{idx}"
-                    confirm_card_key = f"confirm_delete_card_{entry_id}_{idx}"
+                    del_card_btn_key = f"btn_del_card_{entry_key}"
+                    confirm_card_key = f"confirm_delete_card_{entry_key}"
                     
                     if st.button("Delete Entry", key=del_card_btn_key, type="secondary"):
                         st.session_state[confirm_card_key] = True
@@ -741,25 +766,26 @@ with tab4:
                         st.warning("Are you sure you want to delete this?")
                         col_yes, col_no = st.columns(2)
                         with col_yes:
-                            if st.button("Yes", key=f"yes_del_card_{entry_id}_{idx}", type="primary"):
+                            if st.button("Yes", key=f"yes_del_card_{entry_key}", type="primary"):
                                 all_catches = load_json(DB_FILE)
                                 
-                                # DEBUG DIAGNOSTIC FEEDBACK
-                                st.info(f"DIAGNOSTIC - Target ID to match: {repr(entry_id)}")
-                                st.info(f"DIAGNOSTIC - Total records in DB: {len(all_catches)}")
-                                for db_idx, item in enumerate(all_catches):
-                                    st.write(f"Index {db_idx}: id={repr(item.get('id'))}, fallback_id={repr(f'card_{db_idx}')}")
-
                                 updated_catches = []
-                                for i, c in enumerate(all_catches):
-                                    curr_id = str(c.get("id") or f"card_{i}")
-                                    if curr_id != entry_id:
+                                for c in all_catches:
+                                    match = (
+                                        c.get("date") == record_date and 
+                                        c.get("time") == record_time and 
+                                        c.get("latitude") == record_lat and 
+                                        c.get("longitude") == record_lon
+                                    )
+                                    if not match:
                                         updated_catches.append(c)
                                         
                                 save_json(DB_FILE, updated_catches)
-                                st.success(f"DIAGNOSTIC - Before: {len(all_catches)}, After: {len(updated_catches)}")
+                                st.session_state[confirm_card_key] = False
+                                st.success("Entry deleted!")
+                                st.rerun()
                         with col_no:
-                            if st.button("No", key=f"no_del_card_{entry_id}_{idx}"):
+                            if st.button("No", key=f"no_del_card_{entry_key}"):
                                 st.session_state[confirm_card_key] = False
                                 st.rerun()
                 st.divider()
