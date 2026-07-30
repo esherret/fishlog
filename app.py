@@ -39,12 +39,16 @@ def save_json(filepath, data):
         json.dump(data, f, indent=4)
 
 
-# Helper: Correct image orientation from EXIF and apply rotation if needed
-def process_image_orientation(image, rotation_angle=0):
+# Helper: Correct image orientation from EXIF and apply rotation if needed (Optimized & Downscaled for speed)
+def process_image_orientation(image_file, rotation_angle=0):
     try:
+        image = Image.open(image_file)
         image = ImageOps.exif_transpose(image)
     except Exception:
-        pass
+        image = Image.open(image_file)
+    
+    # Resize large phone images immediately to speed up browser rendering and save storage
+    image.thumbnail((1200, 1200))
     
     if rotation_angle != 0:
         image = image.rotate(rotation_angle, expand=True)
@@ -176,11 +180,11 @@ def get_moon_phase(dt):
         return "Waning Crescent"
 
 
-# Helper: 100% Free Pure Code Image Feature Heuristic for Fish & Lure Recognition
+# Helper: Fast Pure Code Image Feature Heuristic for Fish Recognition
 def recognize_fish_and_lure(image_file, lures):
     try:
         img = Image.open(image_file).convert('RGB')
-        img_resized = img.resize((50, 50))
+        img_resized = img.resize((30, 30))
         pixels = list(img_resized.getdata())
         
         r_total = sum(p[0] for p in pixels)
@@ -228,8 +232,8 @@ with tab1:
     if catch_image_file:
         rotation = st.selectbox("Rotate Image (Edit Menu)", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°")
         
-        raw_image = Image.open(catch_image_file)
-        processed_image = process_image_orientation(raw_image, rotation)
+        # Process and downscale immediately to eliminate lag
+        processed_image = process_image_orientation(catch_image_file, rotation)
         
         st.image(processed_image, caption="Processed Catch Photo", width=350)
 
@@ -291,8 +295,7 @@ with tab1:
             if new_lure_name and new_lure_image:
                 lure_img_filename = f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
                 lure_img_path = os.path.join(LURES_DIR, lure_img_filename)
-                raw_lure_img = Image.open(new_image_file if 'new_image_file' in locals() and new_image_file else new_lure_image)
-                proc_lure_img = process_image_orientation(raw_lure_img)
+                proc_lure_img = process_image_orientation(new_lure_image)
                 proc_lure_img.save(lure_img_path)
                 
                 lures.append({"name": new_lure_name, "image_path": lure_img_path})
@@ -310,7 +313,7 @@ with tab1:
         if st.button("Save Catch Entry", type="primary"):
             img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
             img_path = os.path.join(CATCHES_DIR, img_filename)
-            processed_image.save(img_path)
+            processed_image.save(img_path, optimize=True, quality=85)
 
             record = {
                 "id": img_filename,
@@ -403,8 +406,8 @@ with tab3:
         if submitted and lure_name and lure_image:
             img_filename = f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
             img_path = os.path.join(LURES_DIR, img_filename)
-            with open(img_path, "wb") as f:
-                f.write(lure_image.getbuffer())
+            proc_lure_img = process_image_orientation(lure_image)
+            proc_lure_img.save(img_path, optimize=True, quality=85)
                 
             lures = load_json(LURES_FILE)
             lures.append({"name": lure_name, "image_path": img_path})
@@ -509,9 +512,8 @@ with tab4:
                                     if new_image_file:
                                         img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
                                         img_path = os.path.join(CATCHES_DIR, img_filename)
-                                        raw_img = Image.open(new_image_file)
-                                        proc_img = process_image_orientation(raw_img)
-                                        proc_img.save(img_path)
+                                        proc_img = process_image_orientation(new_image_file)
+                                        proc_img.save(img_path, optimize=True, quality=85)
                                         c["image_path"] = img_path
                             save_json(DB_FILE, catches)
                             st.success("Entry updated successfully!")
