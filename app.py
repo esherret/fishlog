@@ -477,7 +477,7 @@ with tab2:
     catches = load_json(DB_FILE)
     if catches:
         filtered_df = get_filtered_catches_df(catches, prefix="map_tab")
-        valid_catches = [row.to_dict() for _, row in filtered_df.iterrows() if row.get("latitude") is not None and row.get("longitude") is not None]
+        valid_catches = [row.to_dict() for _, row in filtered_df.iterrows() if row.get("latitude"] is not None and row.get("longitude") is not None]
         
         if valid_catches:
             avg_lat = sum(c["latitude"] for c in valid_catches) / len(valid_catches)
@@ -658,8 +658,9 @@ with tab4:
                         new_image_file = st.file_uploader("Change Catch Image", type=["jpg", "jpeg", "png"], key=f"edit_img_{entry_id}_{idx}")
                         
                         if st.button("Save Changes", key=f"save_edit_{entry_id}_{idx}"):
-                            for c in catches:
-                                target_id = str(c.get("id") or f"row_{catches.index(c)}")
+                            all_catches = load_json(DB_FILE)
+                            for c in all_catches:
+                                target_id = str(c.get("id") or f"row_{all_catches.index(c)}")
                                 if target_id == entry_id:
                                     c["species"] = new_species
                                     c["length"] = new_length
@@ -670,7 +671,7 @@ with tab4:
                                         proc_img = process_image_orientation(new_image_file)
                                         proc_img.save(img_path, optimize=True, quality=80)
                                         c["image_path"] = img_path
-                            save_json(DB_FILE, catches)
+                            save_json(DB_FILE, all_catches)
                             st.success("Entry updated successfully!")
                             st.rerun()
 
@@ -686,7 +687,20 @@ with tab4:
                             col_yes, col_no = st.columns(2)
                             with col_yes:
                                 if st.button("Yes", key=f"yes_del_{entry_id}_{idx}", type="primary"):
-                                    updated_catches = [c for i, c in enumerate(catches) if str(c.get("id") or f"row_{i}") != entry_id]
+                                    # Troubleshooting debug log on screen
+                                    st.write(f"DEBUG: Attempting to delete entry_id: {entry_id}")
+                                    all_catches = load_json(DB_FILE)
+                                    initial_len = len(all_catches)
+                                    
+                                    updated_catches = []
+                                    for i, c in enumerate(all_catches):
+                                        curr_id = str(c.get("id") or f"row_{i}")
+                                        if curr_id != entry_id:
+                                            updated_catches.append(c)
+                                        else:
+                                            st.write(f"DEBUG: Found and skipped matching entry at index {i} with id {curr_id}")
+                                            
+                                    st.write(f"DEBUG: Before: {initial_len}, After: {len(updated_catches)}")
                                     save_json(DB_FILE, updated_catches)
                                     st.session_state[confirm_key] = False
                                     st.success("Entry deleted!")
@@ -730,7 +744,19 @@ with tab4:
                         col_yes, col_no = st.columns(2)
                         with col_yes:
                             if st.button("Yes", key=f"yes_del_card_{entry_id}_{idx}", type="primary"):
-                                updated_catches = [c for i, c in enumerate(catches) if str(c.get("id") or f"card_{i}") != entry_id]
+                                st.write(f"DEBUG: Attempting to delete entry_id: {entry_id}")
+                                all_catches = load_json(DB_FILE)
+                                initial_len = len(all_catches)
+                                
+                                updated_catches = []
+                                for i, c in enumerate(all_catches):
+                                    curr_id = str(c.get("id") or f"card_{i}")
+                                    if curr_id != entry_id:
+                                        updated_catches.append(c)
+                                    else:
+                                        st.write(f"DEBUG: Found and skipped matching entry at index {i} with id {curr_id}")
+                                        
+                                st.write(f"DEBUG: Before: {initial_len}, After: {len(updated_catches)}")
                                 save_json(DB_FILE, updated_catches)
                                 st.session_state[confirm_card_key] = False
                                 st.success("Entry deleted!")
