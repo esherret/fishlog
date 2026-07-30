@@ -348,9 +348,9 @@ def process_image_orientation(image_file, rotation_angle=0):
 
 def _convert_to_degrees(value):
     try:
-        d = float(value[0].num) / float(value[0].den)
-        m = float(value[1].num) / float(value[1].den)
-        s = float(value[2].num) / float(value[2].den)
+        d = float(value[0])
+        m = float(value[1])
+        s = float(value[2])
         return d + (m / 60.0) + (s / 3600.0)
     except Exception:
         return float(value)
@@ -376,10 +376,10 @@ def extract_exif(image_file):
 
             if lat_data and lat_ref and lon_data and lon_ref:
                 lat = _convert_to_degrees(lat_data)
-                if lat_ref != "N":
+                if str(lat_ref).upper() != "N":
                     lat = -lat
                 lon = _convert_to_degrees(lon_data)
-                if lon_ref != "E":
+                if str(lon_ref).upper() != "E":
                     lon = -lon
 
         return dt, lat, lon
