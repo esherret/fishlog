@@ -473,7 +473,11 @@ with tab1:
     st.header("Log a New Catch")
     
     upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, key="upload_method_radio")
-    catch_image_file = st.camera_input("Take photo", key="cam_input") if upload_method == "Camera" else st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key="file_input")
+    
+    if upload_method == "Camera":
+        catch_image_file = st.camera_input("Take photo", key="cam_input_widget")
+    else:
+        catch_image_file = st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key="file_input_widget")
 
     if catch_image_file:
         rotation = st.selectbox("Rotate Image", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key="rot_sel")
@@ -492,7 +496,7 @@ with tab1:
         manual_lat = 28.39
         manual_lon = float(lon) if lon else -80.60
         
-        m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="250px")
+        m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="250px", tiles="Esri.WorldImagery")
         fish_icon = folium.CustomIcon(
             icon_image="https://cdn-icons-png.flaticon.com/512/2932/2932454.png",
             icon_size=(32, 32),
@@ -510,7 +514,6 @@ with tab1:
         lures = load_lures()
         rec_species, rec_lure = recognize_fish_and_lure(catch_image_file, lures)
 
-        # Get unique species list from samples for dropdown selection
         samples = load_species_samples()
         known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")])))
         if not known_species:
@@ -570,6 +573,14 @@ with tab1:
                 save_species_samples_table(all_samples)
 
             st.success("Catch successfully logged!")
+            
+            keys_to_clear = [
+                "cam_input_widget", "file_input_widget", "rot_sel", "c_date", "c_time",
+                "correct_id_check", "c_species", "c_species_sb", "c_len", "c_lure"
+            ]
+            for k in keys_to_clear:
+                if k in st.session_state:
+                    del st.session_state[k]
             st.rerun()
     else:
         st.info("Please upload or take a photo of your catch to begin logging.")
@@ -583,14 +594,35 @@ with tab2:
         filtered_df = get_filtered_catches_df(catches, prefix="map_tab")
         valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
         if valid:
-            m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11)
+            m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11, tiles="Esri.WorldImagery")
             fish_icon = folium.CustomIcon(
                 icon_image="https://cdn-icons-png.flaticon.com/512/2932/2932454.png",
                 icon_size=(32, 32),
                 icon_anchor=(16, 16)
             )
             for c in valid:
-                folium.Marker(location=[float(c["latitude"]), float(c["longitude"])], popup=f"{c['species']} ({c['length']} in)", icon=fish_icon).add_to(m)
+                img_path = c.get("image_path")
+                img_html = ""
+                if img_path and os.path.exists(img_path):
+                    import base64
+                    with open(img_path, "rb") as img_file:
+                        encoded = base64.b64encode(img_file.read()).decode("utf-8")
+                        img_html = f"<br><img src='data:image/jpeg;base64,{encoded}' width='150' style='border-radius: 4px; margin-top: 5px;'/>"
+                
+                popup_html = f"""
+                <div style="font-family: sans-serif; width: 160px;">
+                    <b>🐟 {c.get('species')}</b><br>
+                    <b>Length:</b> {c.get('length')} in<br>
+                    <b>Date:</b> {c.get('formatted_datetime')}<br>
+                    <b>Lure:</b> {c.get('lure')}<br>
+                    {img_html}
+                </div>
+                """
+                folium.Marker(
+                    location=[float(c["latitude"]), float(c["longitude"])],
+                    popup=folium.Popup(popup_html, max_width=200),
+                    icon=fish_icon
+                ).add_to(m)
             st_folium(m, width=700, height=500)
         else:
             st.info("No mapped catches match filters.")
@@ -795,7 +827,7 @@ with tab5:
             with col_act2:
                 if st.button("🔥 Delete Forever", key=f"perm_del_{idx}_{row.get('id')}"):
                     all_raw = load_all_catches_raw()
-                    updated_raw = [c for c in all_raw if c.get("id") != row.get("id")]
+                    updated_raw = [c for c in all_raw if c.get("id"] != row.get("id")]
                     save_all_catches_raw(updated_raw)
                     st.success("Permanently deleted!")
                     st.rerun()
