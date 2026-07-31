@@ -788,7 +788,7 @@ with tab4:
                     if img_p and os.path.exists(img_p):
                         st.image(img_p, width=90)
 
-                # 2. Location map in the middle (twice as wide, width=220)
+                # 2. Location map in the middle
                 with trio_col2:
                     lat_val = row.get("latitude")
                     lon_val = row.get("longitude")
@@ -835,7 +835,7 @@ with tab4:
                     if st.button("Delete", key=f"del_btn_{idx}"):
                         all_c = load_all_catches_raw()
                         for c in all_c:
-                            if c.get("id"] == row.get("id"):
+                            if c.get("id") == row.get("id"):
                                 c["is_deleted"] = "true"
                         save_all_catches_raw(all_c)
                         
