@@ -21,7 +21,7 @@ controller = CookieController()
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
-# Custom CSS for black slider thumbs, tracks, sidebar filter icon, and smartphone one-line card trio layout
+# Custom CSS for black slider thumbs, tracks, sidebar filter icon, and responsive media layout
 st.markdown("""
 <style>
     .stSlider [data-baseweb="slider"] div[role="slider"] {
@@ -46,22 +46,13 @@ st.markdown("""
         width: 100%;
         height: 100%;
     }
-    .card-trio-container [data-testid="stHorizontalBlock"] {
-        flex-wrap: nowrap !important;
-        gap: 6px !important;
-        align-items: center !important;
-    }
-    .card-trio-container [data-testid="column"] {
-        min-width: 0 !important;
-        flex: 1 1 auto !important;
-    }
-    @media (max-width: 768px) {
-        div[data-testid="stHorizontalBlock"] {
-            display: flex !important;
-            flex-wrap: wrap !important;
-        }
-        .card-trio-container [data-testid="stHorizontalBlock"] {
-            flex-wrap: nowrap !important;
+    /* Smartphone layout (< 768px): images take 90% width stacked */
+    @media (max-width: 767px) {
+        .card-media-block [data-testid="column"] {
+            width: 90% !important;
+            max-width: 90% !important;
+            flex: 0 0 90% !important;
+            margin: 0 auto 12px auto !important;
         }
     }
 </style>
@@ -779,17 +770,18 @@ with tab4:
 
         else:
             for idx, row in filtered_df.iterrows():
-                st.markdown('<div class="card-trio-container">', unsafe_allow_html=True)
-                trio_col1, trio_col2, trio_col3, trio_info, trio_act = st.columns([1, 2, 1, 2.5, 1])
+                # Card View: Columns 1, 2, 3 represent Fish Photo, Map, Lure Image (~25% screen width each on desktop/tablet)
+                st.markdown('<div class="card-media-block">', unsafe_allow_html=True)
+                media_col1, media_col2, media_col3, card_info, card_act = st.columns([2.5, 2.5, 1.5, 2.5, 1])
                 
-                # 1. Fish image on the left
-                with trio_col1:
+                # 1. Fish image on the left (~25% screen width on PC/tablet, 90% width on smartphone)
+                with media_col1:
                     img_p = row.get("image_path")
                     if img_p and os.path.exists(img_p):
-                        st.image(img_p, width=90)
+                        st.image(img_p, use_container_width=True)
 
-                # 2. Location map in the middle
-                with trio_col2:
+                # 2. Location map in the middle (~25% screen width on PC/tablet, 90% width on smartphone)
+                with media_col2:
                     lat_val = row.get("latitude")
                     lon_val = row.get("longitude")
                     if lat_val is not None and lon_val is not None:
@@ -799,8 +791,8 @@ with tab4:
                             m_mini = folium.Map(
                                 location=[lat_f, lon_f],
                                 zoom_start=12,
-                                width=200,
-                                height=110,
+                                width="100%",
+                                height=200,
                                 tiles="Esri.WorldImagery",
                                 zoom_control=False,
                                 dragging=False,
@@ -809,27 +801,27 @@ with tab4:
                             )
                             fish_icon_mini = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
                             folium.Marker(location=[lat_f, lon_f], icon=fish_icon_mini).add_to(m_mini)
-                            st_folium(m_mini, width=200, height=110, key=f"history_minimap_{idx}_{row.get('id')}")
+                            st_folium(m_mini, use_container_width=True, height=200, key=f"history_minimap_{idx}_{row.get('id')}")
                         except Exception:
                             pass
 
                 # 3. Lure image to the right of the map
-                with trio_col3:
+                with media_col3:
                     lure_name = row.get("lure")
                     lures_list = load_lures()
                     matched_lure = next((l for l in lures_list if l.get("name", "").lower() == str(lure_name).lower()), None)
                     if matched_lure and matched_lure.get("image_path") and os.path.exists(matched_lure["image_path"]):
-                        st.image(matched_lure["image_path"], width=90)
+                        st.image(matched_lure["image_path"], use_container_width=True)
                     else:
-                        st.write(f"🎣 {lure_name}")
+                        st.write(f"🎣 **Lure:** {lure_name}")
 
-                with trio_info:
+                with card_info:
                     st.write(f"🐟 **{row.get('species')}** ({row.get('length')} in)")
                     st.write(f"📅 {row.get('formatted_datetime')}")
                     st.write(f"🌤️ {row.get('weather')} | 💨 {row.get('wind_speed')} {row.get('wind_direction')}")
                     st.write(f"🌊 {row.get('tide')} | 🌙 {row.get('moon_phase')}")
 
-                with trio_act:
+                with card_act:
                     if st.button("Edit", key=f"edit_btn_{idx}"):
                         st.session_state[f"show_edit_panel_{row.get('id')}"] = True
                     if st.button("Delete", key=f"del_btn_{idx}"):
