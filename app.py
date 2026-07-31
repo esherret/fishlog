@@ -779,7 +779,7 @@ with tab4:
                     if img_p and os.path.exists(img_p):
                         st.image(img_p, use_container_width=True)
 
-                # 2. Location map in the middle (matched width with fish image column, ~25% on PC/tablet, 90% on smartphone)
+                # 2. Location map in the middle (matched width and increased height to match fish image height)
                 with media_col2:
                     lat_val = row.get("latitude")
                     lon_val = row.get("longitude")
@@ -791,7 +791,7 @@ with tab4:
                                 location=[lat_f, lon_f],
                                 zoom_start=12,
                                 width="100%",
-                                height=200,
+                                height=280,
                                 tiles="Esri.WorldImagery",
                                 zoom_control=False,
                                 dragging=False,
@@ -800,7 +800,7 @@ with tab4:
                             )
                             fish_icon_mini = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
                             folium.Marker(location=[lat_f, lon_f], icon=fish_icon_mini).add_to(m_mini)
-                            st_folium(m_mini, use_container_width=True, height=200, key=f"history_minimap_{idx}_{row.get('id')}")
+                            st_folium(m_mini, use_container_width=True, height=280, key=f"history_minimap_{idx}_{row.get('id')}")
                         except Exception:
                             pass
 
