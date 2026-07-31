@@ -598,7 +598,33 @@ with tab1:
             species = st.selectbox("Select Type of Fish", known_species, key=f"c_species_sb_{v}")
 
         length = st.slider("Length (Inches)", 0.0, 40.0, 15.0, 0.5, key=f"c_len_{v}")
-        selected_lure = st.selectbox("Lure Used", [l["name"] for l in lures] if lures else ["None"], key=f"c_lure_{v}")
+        
+        # Lure Selection Dropdown + Quick Add Option
+        lure_names = [l["name"] for l in lures] if lures else []
+        lure_options = lure_names + ["➕ Add New Lure..."]
+        selected_lure_choice = st.selectbox("Lure Used", lure_options, key=f"c_lure_sb_{v}")
+        
+        selected_lure = selected_lure_choice
+        if selected_lure_choice == "➕ Add New Lure...":
+            with st.expander("➕ Add New Lure", expanded=True):
+                new_lure_name = st.text_input("New Lure Name", key=f"new_l_name_{v}")
+                new_lure_img = st.file_uploader("Upload Lure Image", type=["jpg", "jpeg", "png"], key=f"new_l_img_{v}")
+                if st.button("Save New Lure", key=f"save_new_lure_btn_{v}"):
+                    if new_lure_name:
+                        l_img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
+                        if new_lure_img:
+                            process_image_orientation(new_lure_img).save(l_img_path, optimize=True, quality=80)
+                        else:
+                            l_img_path = ""
+                        
+                        updated_lures = load_lures()
+                        updated_lures.append({"id": str(uuid.uuid4()), "name": new_lure_name, "image_path": l_img_path})
+                        save_lures(updated_lures)
+                        st.success(f"Lure '{new_lure_name}' added successfully! Please re-select it from the dropdown.")
+                        st.rerun()
+                    else:
+                        st.error("Please enter a lure name.")
+            selected_lure = "None"
 
         if st.button("Save Catch Entry", type="primary", key=f"save_btn_{v}"):
             img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
@@ -698,9 +724,12 @@ with tab3:
     with st.form("lure_form", clear_on_submit=True):
         l_name = st.text_input("New Lure Name")
         l_img = st.file_uploader("Upload Lure Image", type=["jpg", "jpeg", "png"])
-        if st.form_submit_button("Add Lure") and l_name and l_img:
-            img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg")
-            process_image_orientation(l_img).save(img_path, optimize=True, quality=80)
+        if st.form_submit_button("Add Lure") and l_name:
+            img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
+            if l_img:
+                process_image_orientation(l_img).save(img_path, optimize=True, quality=80)
+            else:
+                img_path = ""
             lures = load_lures()
             lures.append({"id": str(uuid.uuid4()), "name": l_name, "image_path": img_path})
             save_lures(lures)
