@@ -770,17 +770,16 @@ with tab4:
 
         else:
             for idx, row in filtered_df.iterrows():
-                # Card View: Columns 1, 2, 3 represent Fish Photo, Map, Lure Image (~25% screen width each on desktop/tablet)
                 st.markdown('<div class="card-media-block">', unsafe_allow_html=True)
-                media_col1, media_col2, media_col3, card_info, card_act = st.columns([2.5, 2.5, 1.5, 2.5, 1])
+                media_col1, media_col2, media_col3, card_info, card_act = st.columns([2, 2, 1.5, 2.5, 1])
                 
-                # 1. Fish image on the left (~25% screen width on PC/tablet, 90% width on smartphone)
+                # 1. Fish image on the left (~25% width on PC/tablet, 90% on smartphone)
                 with media_col1:
                     img_p = row.get("image_path")
                     if img_p and os.path.exists(img_p):
                         st.image(img_p, use_container_width=True)
 
-                # 2. Location map in the middle (~25% screen width on PC/tablet, 90% width on smartphone)
+                # 2. Location map in the middle (matched width with fish image column, ~25% on PC/tablet, 90% on smartphone)
                 with media_col2:
                     lat_val = row.get("latitude")
                     lon_val = row.get("longitude")
@@ -792,7 +791,7 @@ with tab4:
                                 location=[lat_f, lon_f],
                                 zoom_start=12,
                                 width="100%",
-                                height=200,
+                                height=150,
                                 tiles="Esri.WorldImagery",
                                 zoom_control=False,
                                 dragging=False,
@@ -801,7 +800,7 @@ with tab4:
                             )
                             fish_icon_mini = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
                             folium.Marker(location=[lat_f, lon_f], icon=fish_icon_mini).add_to(m_mini)
-                            st_folium(m_mini, use_container_width=True, height=200, key=f"history_minimap_{idx}_{row.get('id')}")
+                            st_folium(m_mini, use_container_width=True, height=150, key=f"history_minimap_{idx}_{row.get('id')}")
                         except Exception:
                             pass
 
@@ -813,7 +812,7 @@ with tab4:
                     if matched_lure and matched_lure.get("image_path") and os.path.exists(matched_lure["image_path"]):
                         st.image(matched_lure["image_path"], use_container_width=True)
                     else:
-                        st.write(f"🎣 **Lure:** {lure_name}")
+                        st.write(f"🎣 {lure_name}")
 
                 with card_info:
                     st.write(f"🐟 **{row.get('species')}** ({row.get('length')} in)")
