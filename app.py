@@ -791,7 +791,7 @@ with tab4:
                                 location=[lat_f, lon_f],
                                 zoom_start=12,
                                 width="100%",
-                                height=150,
+                                height=200,
                                 tiles="Esri.WorldImagery",
                                 zoom_control=False,
                                 dragging=False,
@@ -800,7 +800,7 @@ with tab4:
                             )
                             fish_icon_mini = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
                             folium.Marker(location=[lat_f, lon_f], icon=fish_icon_mini).add_to(m_mini)
-                            st_folium(m_mini, use_container_width=True, height=150, key=f"history_minimap_{idx}_{row.get('id')}")
+                            st_folium(m_mini, use_container_width=True, height=200, key=f"history_minimap_{idx}_{row.get('id')}")
                         except Exception:
                             pass
 
