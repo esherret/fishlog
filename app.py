@@ -760,6 +760,29 @@ with tab4:
                                 st.session_state[f"fullscreen_{row.get('id')}"] = False
                                 st.rerun()
                             st.markdown("---")
+                    
+                    # Display smaller mini map matching image size below the image in Card View
+                    lat_val = row.get("latitude")
+                    lon_val = row.get("longitude")
+                    if lat_val is not None and lon_val is not None:
+                        try:
+                            lat_f = float(lat_val)
+                            lon_f = float(lon_val)
+                            m_mini = folium.Map(
+                                location=[lat_f, lon_f],
+                                zoom_start=13,
+                                width=150,
+                                height=130,
+                                tiles="Esri.WorldImagery",
+                                zoom_control=False,
+                                dragging=False,
+                                scrollWheelZoom=False
+                            )
+                            fish_icon_mini = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
+                            folium.Marker(location=[lat_f, lon_f], icon=fish_icon_mini).add_to(m_mini)
+                            st_folium(m_mini, width=150, height=130, key=f"history_minimap_{idx}_{row.get('id')}")
+                        except Exception:
+                            pass
 
                 with col_info:
                     st.write(f"🐟 **Type of Fish:** {row.get('species')} ({row.get('length')} in)")
