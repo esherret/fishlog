@@ -770,7 +770,7 @@ with tab4:
                     save_all_catches_raw(all_raw)
 
                     samples = load_species_samples()
-                    updated_samples = [s for s in samples if s.get("catch_id"] not in deleted_ids]
+                    updated_samples = [s for s in samples if s.get("catch_id") not in deleted_ids]
                     save_species_samples_table(updated_samples)
 
                     st.success(f"Successfully moved {len(selected_rows)} selected catch(es) to Recycle Bin!")
@@ -807,7 +807,7 @@ with tab4:
                                 width="100%",
                                 height=280,
                                 tiles="Esri.WorldImagery",
-                                zoom_control=True,  # Enabled zoom control (+/- buttons) for desktop/mouse interaction
+                                zoom_control=True,
                                 dragging=False,
                                 scrollWheelZoom=False,
                                 attribution_control=False
