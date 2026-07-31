@@ -21,7 +21,7 @@ controller = CookieController()
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
-# Custom CSS for black slider thumbs, tracks, sidebar filter icon, and responsive mobile lure grid
+# Custom CSS for black slider thumbs, tracks, sidebar filter icon, and smartphone one-line card trio layout
 st.markdown("""
 <style>
     .stSlider [data-baseweb="slider"] div[role="slider"] {
@@ -46,15 +46,22 @@ st.markdown("""
         width: 100%;
         height: 100%;
     }
+    .card-trio-container [data-testid="stHorizontalBlock"] {
+        flex-wrap: nowrap !important;
+        gap: 6px !important;
+        align-items: center !important;
+    }
+    .card-trio-container [data-testid="column"] {
+        min-width: 0 !important;
+        flex: 1 1 auto !important;
+    }
     @media (max-width: 768px) {
         div[data-testid="stHorizontalBlock"] {
             display: flex !important;
             flex-wrap: wrap !important;
         }
-        div[data-testid="stHorizontalBlock"] > div[data-testid="column"] {
-            flex: 0 0 50% !important;
-            max-width: 50% !important;
-            min-width: 50% !important;
+        .card-trio-container [data-testid="stHorizontalBlock"] {
+            flex-wrap: nowrap !important;
         }
     }
 </style>
@@ -440,11 +447,24 @@ def get_moon_phase(dt):
 def recognize_fish_and_lure(image_file, lures):
     try:
         img = Image.open(image_file).convert('RGB')
-        img_resized = img.resize((30, 30))
-        target_pixels = list(img_resized.getdata())
-        target_r = sum(p[0] for p in target_pixels) / len(target_pixels)
-        target_g = sum(p[1] for p in target_pixels) / len(target_pixels)
-        target_b = sum(p[2] for p in target_pixels) / len(target_pixels)
+        img_resized = img.resize((50, 50))
+        pixels = list(img_resized.getdata())
+        w, h = img_resized.size
+        zones = [
+            [pixels[y * w + x] for y in range(0, h//2) for x in range(0, w//2)],
+            [pixels[y * w + x] for y in range(0, h//2) for x in range(w//2, w)],
+            [pixels[y * w + x] for y in range(h//2, h) for x in range(0, w//2)],
+            [pixels[y * w + x] for y in range(h//2, h) for x in range(w//2, w)],
+        ]
+        zone_avgs = []
+        for zone in zones:
+            if zone:
+                r = sum(p[0] for p in zone) / len(zone)
+                g = sum(p[1] for p in zone) / len(zone)
+                b = sum(p[2] for p in zone) / len(zone)
+                zone_avgs.extend([r, g, b])
+            else:
+                zone_avgs.extend([0, 0, 0])
 
         samples = load_species_samples()
         if samples:
@@ -454,22 +474,32 @@ def recognize_fish_and_lure(image_file, lures):
                 sample_path = sample.get("image_path")
                 if sample_path and os.path.exists(sample_path):
                     try:
-                        s_img = Image.open(sample_path).convert('RGB').resize((30, 30))
+                        s_img = Image.open(sample_path).convert('RGB').resize((50, 50))
                         s_pixels = list(s_img.getdata())
-                        s_r = sum(p[0] for p in s_pixels) / len(s_pixels)
-                        s_g = sum(p[1] for p in s_pixels) / len(s_pixels)
-                        s_b = sum(p[2] for p in s_pixels) / len(s_pixels)
-                        
-                        diff = abs(target_r - s_r) + abs(target_g - s_g) + abs(target_b - s_b)
+                        s_w, s_h = s_img.size
+                        s_zones = [
+                            [s_pixels[y * s_w + x] for y in range(0, s_h//2) for x in range(0, s_w//2)],
+                            [s_pixels[y * s_w + x] for y in range(0, s_h//2) for x in range(s_w//2, s_w)],
+                            [s_pixels[y * s_w + x] for y in range(s_h//2, s_h) for x in range(0, s_w//2)],
+                            [s_pixels[y * s_w + x] for y in range(s_h//2, s_h) for x in range(s_w//2, s_w)],
+                        ]
+                        s_zone_avgs = []
+                        for s_zone in s_zones:
+                            if s_zone:
+                                sr = sum(p[0] for p in s_zone) / len(s_zone)
+                                sg = sum(p[1] for p in s_zone) / len(s_zone)
+                                sb = sum(p[2] for p in s_zone) / len(s_zone)
+                                s_zone_avgs.extend([sr, sg, sb])
+                            else:
+                                s_zone_avgs.extend([0, 0, 0])
+
+                        diff = sum(abs(a - b) for a, b in zip(zone_avgs, s_zone_avgs))
                         if diff < min_diff:
                             min_diff = diff
                             best_match = sample.get("species")
                     except Exception:
                         continue
-            if best_match:
-                detected_species = best_match
-            else:
-                detected_species = "Snook"
+            detected_species = best_match if best_match else "Snook"
         else:
             detected_species = "Snook"
     except Exception:
@@ -536,7 +566,7 @@ with tab1:
         with col_lon:
             manual_lon = st.number_input("Longitude", value=lon if lon is not None else -80.60, format="%.6f", key=f"catch_lon_input_{v}")
         
-        m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="250px", tiles="Esri.WorldImagery", attribution_control=False)
+        m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=12, width="100%", height="250px", tiles="Esri.WorldImagery", attribution_control=False)
         fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
         folium.Marker(location=[manual_lat, manual_lon], popup="Catch Location", icon=fish_icon).add_to(m_thumb)
         st_folium(m_thumb, width=700, height=250, key=f"thumb_map_{v}")
@@ -597,8 +627,12 @@ with tab1:
             })
             save_all_catches_raw(catches)
 
-            if is_correct_id:
-                all_samples = load_species_samples()
+            # Add or update sample in Fish Recognition Library upon selection/saving
+            all_samples = load_species_samples()
+            existing_sample = next((s for s in all_samples if s.get("catch_id") == catch_id), None)
+            if existing_sample:
+                existing_sample["species"] = species if species else "Unknown"
+            else:
                 all_samples.append({
                     "id": str(uuid.uuid4()),
                     "user_id": user["id"],
@@ -606,7 +640,7 @@ with tab1:
                     "species": species if species else "Unknown",
                     "image_path": img_path
                 })
-                save_species_samples_table(all_samples)
+            save_species_samples_table(all_samples)
 
             st.success("Catch successfully logged!")
             
@@ -745,23 +779,19 @@ with tab4:
 
         else:
             for idx, row in filtered_df.iterrows():
-                col_img, col_info, col_act = st.columns([1, 2, 1])
-                with col_img:
+                st.markdown('<div class="card-trio-container">', unsafe_allow_html=True)
+                trio_col1, trio_col2, trio_col3, trio_info, trio_act = st.columns([1.1, 1.1, 1.1, 2.5, 1])
+                
+                # 1. Fish image on the left (clickable via expander to view full screen)
+                with trio_col1:
                     img_p = row.get("image_path")
                     if img_p and os.path.exists(img_p):
-                        st.image(img_p, width=150)
-                        if st.button("🔍 Full Screen Image", key=f"fs_img_{idx}"):
-                            st.session_state[f"fullscreen_{row.get('id')}"] = True
+                        with st.expander("📷 View Photo"):
+                            st.image(img_p, width='stretch')
+                        st.image(img_p, width=100)
 
-                        if st.session_state.get(f"fullscreen_{row.get('id')}", False):
-                            st.markdown("---")
-                            st.image(img_p, caption=f"{row.get('species')} - Full Screen", width='stretch')
-                            if st.button("Close Full Screen", key=f"close_fs_{idx}"):
-                                st.session_state[f"fullscreen_{row.get('id')}"] = False
-                                st.rerun()
-                            st.markdown("---")
-                    
-                    # Display smaller mini map matching image size below the image in Card View
+                # 2. Location map in the middle (twice as big / zoomed out 25% from 13 -> 12, clickable hint)
+                with trio_col2:
                     lat_val = row.get("latitude")
                     lon_val = row.get("longitude")
                     if lat_val is not None and lon_val is not None:
@@ -770,9 +800,9 @@ with tab4:
                             lon_f = float(lon_val)
                             m_mini = folium.Map(
                                 location=[lat_f, lon_f],
-                                zoom_start=13,
-                                width=150,
-                                height=130,
+                                zoom_start=12,
+                                width=110,
+                                height=110,
                                 tiles="Esri.WorldImagery",
                                 zoom_control=False,
                                 dragging=False,
@@ -781,18 +811,27 @@ with tab4:
                             )
                             fish_icon_mini = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
                             folium.Marker(location=[lat_f, lon_f], icon=fish_icon_mini).add_to(m_mini)
-                            st_folium(m_mini, width=150, height=130, key=f"history_minimap_{idx}_{row.get('id')}")
+                            st_folium(m_mini, width=110, height=110, key=f"history_minimap_{idx}_{row.get('id')}")
                         except Exception:
                             pass
 
-                with col_info:
-                    st.write(f"🐟 **Type of Fish:** {row.get('species')} ({row.get('length')} in)")
-                    st.write(f"📅 **Date/Time:** {row.get('formatted_datetime')}")
-                    st.write(f"🎣 **Lure:** {row.get('lure')}")
-                    st.write(f"🌤️ **Weather:** {row.get('weather')} | 💨 **Wind:** {row.get('wind_speed')} {row.get('wind_direction')}")
-                    st.write(f"🌊 **Tide:** {row.get('tide')} | 🌙 **Moon:** {row.get('moon_phase')}")
+                # 3. Lure image to the right of the map
+                with trio_col3:
+                    lure_name = row.get("lure")
+                    lures_list = load_lures()
+                    matched_lure = next((l for l in lures_list if l.get("name", "").lower() == str(lure_name).lower()), None)
+                    if matched_lure and matched_lure.get("image_path") and os.path.exists(matched_lure["image_path"]):
+                        st.image(matched_lure["image_path"], width=100)
+                    else:
+                        st.write(f"🎣 {lure_name}")
 
-                with col_act:
+                with trio_info:
+                    st.write(f"🐟 **{row.get('species')}** ({row.get('length')} in)")
+                    st.write(f"📅 {row.get('formatted_datetime')}")
+                    st.write(f"🌤️ {row.get('weather')} | 💨 {row.get('wind_speed')} {row.get('wind_direction')}")
+                    st.write(f"🌊 {row.get('tide')} | 🌙 {row.get('moon_phase')}")
+
+                with trio_act:
                     if st.button("Edit", key=f"edit_btn_{idx}"):
                         st.session_state[f"show_edit_panel_{row.get('id')}"] = True
                     if st.button("Delete", key=f"del_btn_{idx}"):
@@ -808,6 +847,8 @@ with tab4:
                         
                         st.success("Moved to Recycle Bin!")
                         st.rerun()
+
+                st.markdown('</div>', unsafe_allow_html=True)
 
                 # Interactive Edit expander panel
                 if st.session_state.get(f"show_edit_panel_{row.get('id')}", False):
@@ -836,6 +877,22 @@ with tab4:
                                         img_path = os.path.join(CATCHES_DIR, img_filename)
                                         process_image_orientation(new_img_file).save(img_path, optimize=True, quality=80)
                                         c["image_path"] = img_path
+                                        
+                                        # Update recognition library sample
+                                        samples = load_species_samples()
+                                        s_match = next((s for s in samples if s.get("catch_id") == row.get("id")), None)
+                                        if s_match:
+                                            s_match["species"] = new_species
+                                            s_match["image_path"] = img_path
+                                        else:
+                                            samples.append({
+                                                "id": str(uuid.uuid4()),
+                                                "user_id": user["id"],
+                                                "catch_id": row.get("id"),
+                                                "species": new_species,
+                                                "image_path": img_path
+                                            })
+                                        save_species_samples_table(samples)
                             save_all_catches_raw(all_c)
                             st.session_state[f"show_edit_panel_{row.get('id')}"] = False
                             st.success("Entry updated successfully!")
