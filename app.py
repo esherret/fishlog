@@ -536,7 +536,7 @@ with tab1:
         with col_lon:
             manual_lon = st.number_input("Longitude", value=lon if lon is not None else -80.60, format="%.6f", key=f"catch_lon_input_{v}")
         
-        m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="250px", tiles="Esri.WorldImagery")
+        m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="250px", tiles="Esri.WorldImagery", attribution_control=False)
         fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
         folium.Marker(location=[manual_lat, manual_lon], popup="Catch Location", icon=fish_icon).add_to(m_thumb)
         st_folium(m_thumb, width=700, height=250, key=f"thumb_map_{v}")
@@ -625,7 +625,7 @@ with tab2:
         filtered_df = get_filtered_catches_df(catches, prefix="map_tab")
         valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
         if valid:
-            m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11, tiles="Esri.WorldImagery")
+            m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11, tiles="Esri.WorldImagery", attribution_control=False)
             fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
             for c in valid:
                 img_path = c.get("image_path")
@@ -776,7 +776,8 @@ with tab4:
                                 tiles="Esri.WorldImagery",
                                 zoom_control=False,
                                 dragging=False,
-                                scrollWheelZoom=False
+                                scrollWheelZoom=False,
+                                attribution_control=False
                             )
                             fish_icon_mini = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
                             folium.Marker(location=[lat_f, lon_f], icon=fish_icon_mini).add_to(m_mini)
