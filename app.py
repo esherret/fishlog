@@ -896,57 +896,89 @@ with tab4:
 
                 st.markdown('</div>', unsafe_allow_html=True)
 
-                # Interactive Edit expander panel
+                # Interactive Edit panel
                 if st.session_state.get(f"show_edit_panel_{row.get('id')}", False):
-                    with st.form(key=f"edit_catch_form_{row.get('id')}"):
+                    with st.container():
                         st.write(f"**Editing Catch ID:** {row.get('id')[:6]}")
-                        new_species = st.text_input("Type of Fish", value=row.get("species", ""))
-                        new_length = st.slider("Length (Inches)", 0.0, 40.0, float(row.get("length", 15.0)), 0.5, key=f"edit_len_{row.get('id')}")
-                        new_lure = st.text_input("Lure", value=row.get("lure", ""))
-                        new_img_file = st.file_uploader("Replace Catch Image (Optional)", type=["jpg", "jpeg", "png"], key=f"edit_file_{row.get('id')}")
+                        edit_species_key = f"edit_species_{row.get('id')}"
+                        edit_length_key = f"edit_len_{row.get('id')}"
+                        edit_file_key = f"edit_file_{row.get('id')}"
+
+                        new_species = st.text_input("Type of Fish", value=row.get("species", ""), key=edit_species_key)
+                        new_length = st.slider("Length (Inches)", 0.0, 40.0, float(row.get("length", 15.0)), 0.5, key=edit_length_key)
+                        
+                        # Lure Dropdown & Quick Add in Edit Panel
+                        lures_list = load_lures()
+                        lure_names = [l["name"] for l in lures_list] if lures_list else []
+                        lure_options = lure_names + ["➕ Add New Lure..."]
+                        curr_lure = row.get("lure", "")
+                        d_idx = lure_options.index(curr_lure) if curr_lure in lure_options else 0
+                        
+                        selected_lure_choice = st.selectbox("Lure Used", lure_options, index=d_idx, key=f"edit_lure_sb_{row.get('id')}")
+                        
+                        new_lure = selected_lure_choice
+                        if selected_lure_choice == "➕ Add New Lure...":
+                            with st.expander("➕ Add New Lure", expanded=True):
+                                new_lure_name = st.text_input("New Lure Name", key=f"edit_new_l_name_{row.get('id')}")
+                                new_lure_img = st.file_uploader("Upload Lure Image", type=["jpg", "jpeg", "png"], key=f"edit_new_l_img_{row.get('id')}")
+                                if st.button("Save New Lure", key=f"edit_save_new_lure_btn_{row.get('id')}"):
+                                    if new_lure_name:
+                                        l_img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
+                                        if new_lure_img:
+                                            process_image_orientation(new_lure_img).save(l_img_path, optimize=True, quality=80)
+                                        else:
+                                            l_img_path = ""
+                                        
+                                        updated_lures = load_lures()
+                                        updated_lures.append({"id": str(uuid.uuid4()), "name": new_lure_name, "image_path": l_img_path})
+                                        save_lures(updated_lures)
+                                        st.success(f"Lure '{new_lure_name}' added! Please re-select it.")
+                                        st.rerun()
+                                    else:
+                                        st.error("Please enter a lure name.")
+                            new_lure = "None"
+
+                        new_img_file = st.file_uploader("Replace Catch Image (Optional)", type=["jpg", "jpeg", "png"], key=edit_file_key)
 
                         col_sub_save, col_sub_cancel = st.columns(2)
                         with col_sub_save:
-                            save_edits = st.form_submit_button("Save Changes", type="primary")
+                            if st.button("Save Changes", type="primary", key=f"save_edit_btn_{row.get('id')}"):
+                                all_c = load_all_catches_raw()
+                                for c in all_c:
+                                    if c.get("id") == row.get("id"):
+                                        c["species"] = new_species
+                                        c["length"] = new_length
+                                        c["lure"] = new_lure
+                                        if new_img_file:
+                                            img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                                            img_path = os.path.join(CATCHES_DIR, img_filename)
+                                            process_image_orientation(new_img_file).save(img_path, optimize=True, quality=80)
+                                            c["image_path"] = img_path
+                                            
+                                            # Update recognition library sample
+                                            samples = load_species_samples()
+                                            s_match = next((s for s in samples if s.get("catch_id") == row.get("id")), None)
+                                            if s_match:
+                                                s_match["species"] = new_species
+                                                s_match["image_path"] = img_path
+                                            else:
+                                                samples.append({
+                                                    "id": str(uuid.uuid4()),
+                                                    "user_id": user["id"],
+                                                    "catch_id": row.get("id"),
+                                                    "species": new_species,
+                                                    "image_path": img_path
+                                                })
+                                            save_species_samples_table(samples)
+                                save_all_catches_raw(all_c)
+                                st.session_state[f"show_edit_panel_{row.get('id')}"] = False
+                                st.success("Entry updated successfully!")
+                                st.rerun()
+
                         with col_sub_cancel:
-                            cancel_edit = st.form_submit_button("Cancel")
-
-                        if save_edits:
-                            all_c = load_all_catches_raw()
-                            for c in all_c:
-                                if c.get("id") == row.get("id"):
-                                    c["species"] = new_species
-                                    c["length"] = new_length
-                                    c["lure"] = new_lure
-                                    if new_img_file:
-                                        img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-                                        img_path = os.path.join(CATCHES_DIR, img_filename)
-                                        process_image_orientation(new_img_file).save(img_path, optimize=True, quality=80)
-                                        c["image_path"] = img_path
-                                        
-                                        # Update recognition library sample
-                                        samples = load_species_samples()
-                                        s_match = next((s for s in samples if s.get("catch_id") == row.get("id")), None)
-                                        if s_match:
-                                            s_match["species"] = new_species
-                                            s_match["image_path"] = img_path
-                                        else:
-                                            samples.append({
-                                                "id": str(uuid.uuid4()),
-                                                "user_id": user["id"],
-                                                "catch_id": row.get("id"),
-                                                "species": new_species,
-                                                "image_path": img_path
-                                            })
-                                        save_species_samples_table(samples)
-                            save_all_catches_raw(all_c)
-                            st.session_state[f"show_edit_panel_{row.get('id')}"] = False
-                            st.success("Entry updated successfully!")
-                            st.rerun()
-
-                        if cancel_edit:
-                            st.session_state[f"show_edit_panel_{row.get('id')}"] = False
-                            st.rerun()
+                            if st.button("Cancel", key=f"cancel_edit_btn_{row.get('id')}"):
+                                st.session_state[f"show_edit_panel_{row.get('id')}"] = False
+                                st.rerun()
 
                 st.divider()
     else:
