@@ -786,7 +786,7 @@ with tab4:
                 with trio_col1:
                     img_p = row.get("image_path")
                     if img_p and os.path.exists(img_p):
-                        with st.expander("📷 View Photo"):
+                        with st.expander("🔍 Click for Full Screen"):
                             st.image(img_p, width='stretch')
                         st.image(img_p, width=100)
 
@@ -798,6 +798,8 @@ with tab4:
                         try:
                             lat_f = float(lat_val)
                             lon_f = float(lon_val)
+                            with st.expander("🗺️ Open Catch Map"):
+                                st.info("Go to the 'Catch Map' tab above to view full map interactive details.")
                             m_mini = folium.Map(
                                 location=[lat_f, lon_f],
                                 zoom_start=12,
