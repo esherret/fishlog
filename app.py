@@ -17,6 +17,10 @@ st.set_page_config(page_title="Fish Catch Log", page_icon="🎣", layout="wide")
 # Initialize persistent cookie controller
 controller = CookieController()
 
+# Initialize form version counter in session state for instant clearing
+if "form_version" not in st.session_state:
+    st.session_state.form_version = 0
+
 # Custom CSS for black slider thumbs, tracks, sidebar filter icon, and responsive mobile lure grid
 st.markdown("""
 <style>
@@ -502,15 +506,18 @@ def get_filtered_catches_df(catches, prefix="global"):
 with tab1:
     st.header("Log a New Catch")
     
-    upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, key="upload_method_radio")
+    # Use dynamic version suffix to force-clear all input widgets upon submission
+    v = st.session_state.form_version
+    
+    upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, key=f"upload_method_radio_{v}")
     
     if upload_method == "Camera":
-        catch_image_file = st.camera_input("Take photo", key="cam_input_widget")
+        catch_image_file = st.camera_input("Take photo", key=f"cam_input_widget_{v}")
     else:
-        catch_image_file = st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key="file_input_widget")
+        catch_image_file = st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key=f"file_input_widget_{v}")
 
     if catch_image_file:
-        rotation = st.selectbox("Rotate Image", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key="rot_sel")
+        rotation = st.selectbox("Rotate Image", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key=f"rot_sel_{v}")
         processed_image = process_image_orientation(catch_image_file, rotation)
         st.image(processed_image, caption="Processed Photo", width=350)
 
@@ -518,21 +525,21 @@ with tab1:
         
         col_dt1, col_dt2 = st.columns(2)
         with col_dt1:
-            log_date = st.date_input("Date", value=dt.date() if dt else datetime.now().date(), format="MM/DD/YYYY", key="c_date")
+            log_date = st.date_input("Date", value=dt.date() if dt else datetime.now().date(), format="MM/DD/YYYY", key=f"c_date_{v}")
         with col_dt2:
-            log_time = st.time_input("Time", value=dt.time() if dt else datetime.now().time(), key="c_time")
+            log_time = st.time_input("Time", value=dt.time() if dt else datetime.now().time(), key=f"c_time_{v}")
 
         st.write("📍 **Catch Location:**")
         col_lat, col_lon = st.columns(2)
         with col_lat:
-            manual_lat = st.number_input("Latitude", value=lat if lat is not None else 28.39, format="%.6f", key="c_lat")
+            manual_lat = st.number_input("Latitude", value=lat if lat is not None else 28.39, format="%.6f", key=f"c_lat_{v}")
         with col_lon:
-            manual_lon = st.number_input("Longitude", value=lon if lon is not None else -80.60, format="%.6f", key="catch_lon_input")
+            manual_lon = st.number_input("Longitude", value=lon if lon is not None else -80.60, format="%.6f", key=f"catch_lon_input_{v}")
         
         m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=13, width="100%", height="250px", tiles="Esri.WorldImagery")
         fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
         folium.Marker(location=[manual_lat, manual_lon], popup="Catch Location", icon=fish_icon).add_to(m_thumb)
-        st_folium(m_thumb, width=700, height=250, key="thumb_map")
+        st_folium(m_thumb, width=700, height=250, key=f"thumb_map_{v}")
 
         combined_dt = datetime.combine(log_date, log_time)
         formatted_dt_str = combined_dt.strftime("%m/%d/%Y %I:%M %p")
@@ -552,17 +559,17 @@ with tab1:
 
         col_sp1, col_sp2 = st.columns([3, 1])
         with col_sp1:
-            is_correct_id = st.checkbox("Correctly ID'd [ ]", value=True, key="correct_id_check")
+            is_correct_id = st.checkbox("Correctly ID'd", value=False, key=f"correct_id_check_{v}")
         
         if is_correct_id:
-            species = st.text_input("Type of Fish", value=rec_species, key="c_species")
+            species = st.text_input("Type of Fish", value=rec_species, key=f"c_species_{v}")
         else:
-            species = st.selectbox("Select Type of Fish", known_species, key="c_species_sb")
+            species = st.selectbox("Select Type of Fish", known_species, key=f"c_species_sb_{v}")
 
-        length = st.slider("Length (Inches)", 0.0, 40.0, 15.0, 0.5, key="c_len")
-        selected_lure = st.selectbox("Lure Used", [l["name"] for l in lures] if lures else ["None"], key="c_lure")
+        length = st.slider("Length (Inches)", 0.0, 40.0, 15.0, 0.5, key=f"c_len_{v}")
+        selected_lure = st.selectbox("Lure Used", [l["name"] for l in lures] if lures else ["None"], key=f"c_lure_{v}")
 
-        if st.button("Save Catch Entry", type="primary"):
+        if st.button("Save Catch Entry", type="primary", key=f"save_btn_{v}"):
             img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
             img_path = os.path.join(CATCHES_DIR, img_filename)
             processed_image.save(img_path, optimize=True, quality=80)
@@ -603,13 +610,8 @@ with tab1:
 
             st.success("Catch successfully logged!")
             
-            keys_to_clear = [
-                "cam_input_widget", "file_input_widget", "rot_sel", "c_date", "c_time",
-                "c_lat", "catch_lon_input", "correct_id_check", "c_species", "c_species_sb", "c_len", "c_lure"
-            ]
-            for k in keys_to_clear:
-                if k in st.session_state:
-                    del st.session_state[k]
+            # Increment form version to completely destroy and re-initialize all input widgets instantly
+            st.session_state.form_version += 1
             st.rerun()
     else:
         st.info("Please upload or take a photo of your catch to begin logging.")
