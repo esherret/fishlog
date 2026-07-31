@@ -46,6 +46,16 @@ st.markdown("""
         width: 100%;
         height: 100%;
     }
+    /* Style the delete button red in card history action rows */
+    div[data-testid="stHorizontalBlock"] div[data-testid="column"]:nth-child(2) button {
+        background-color: #ff4b4b !important;
+        color: white !important;
+        border-color: #ff4b4b !important;
+    }
+    div[data-testid="stHorizontalBlock"] div[data-testid="column"]:nth-child(2) button:hover {
+        background-color: #ff3333 !important;
+        color: white !important;
+    }
     /* Smartphone layout (< 768px): images take 90% width stacked */
     @media (max-width: 767px) {
         .card-media-block [data-testid="column"] {
@@ -760,7 +770,7 @@ with tab4:
                     save_all_catches_raw(all_raw)
 
                     samples = load_species_samples()
-                    updated_samples = [s for s in samples if s.get("catch_id") not in deleted_ids]
+                    updated_samples = [s for s in samples if s.get("catch_id"] not in deleted_ids]
                     save_species_samples_table(updated_samples)
 
                     st.success(f"Successfully moved {len(selected_rows)} selected catch(es) to Recycle Bin!")
@@ -771,15 +781,19 @@ with tab4:
         else:
             for idx, row in filtered_df.iterrows():
                 st.markdown('<div class="card-media-block">', unsafe_allow_html=True)
-                media_col1, media_col2, media_col3, card_info, card_act = st.columns([2, 2, 1.5, 2.5, 1])
                 
-                # 1. Fish image on the left (~25% width on PC/tablet, 90% on smartphone)
+                # 1. Text info displayed first at the top of the card
+                st.write(f"🐟 **{row.get('species')}** ({row.get('length')} in) | 📅 {row.get('formatted_datetime')}")
+                st.write(f"🌤️ {row.get('weather')} | 💨 {row.get('wind_speed')} {row.get('wind_direction')} | 🌊 {row.get('tide')} | 🌙 {row.get('moon_phase')}")
+
+                # 2. Media row second (Fish image, Map with zoom control enabled for mouse/buttons, Lure image)
+                media_col1, media_col2, media_col3 = st.columns([2, 2, 1.5])
+                
                 with media_col1:
                     img_p = row.get("image_path")
                     if img_p and os.path.exists(img_p):
                         st.image(img_p, use_container_width=True)
 
-                # 2. Location map in the middle (matched width and increased height to match fish image height)
                 with media_col2:
                     lat_val = row.get("latitude")
                     lon_val = row.get("longitude")
@@ -793,7 +807,7 @@ with tab4:
                                 width="100%",
                                 height=280,
                                 tiles="Esri.WorldImagery",
-                                zoom_control=False,
+                                zoom_control=True,  # Enabled zoom control (+/- buttons) for desktop/mouse interaction
                                 dragging=False,
                                 scrollWheelZoom=False,
                                 attribution_control=False
@@ -804,7 +818,6 @@ with tab4:
                         except Exception:
                             pass
 
-                # 3. Lure image to the right of the map
                 with media_col3:
                     lure_name = row.get("lure")
                     lures_list = load_lures()
@@ -814,15 +827,12 @@ with tab4:
                     else:
                         st.write(f"🎣 {lure_name}")
 
-                with card_info:
-                    st.write(f"🐟 **{row.get('species')}** ({row.get('length')} in)")
-                    st.write(f"📅 {row.get('formatted_datetime')}")
-                    st.write(f"🌤️ {row.get('weather')} | 💨 {row.get('wind_speed')} {row.get('wind_direction')}")
-                    st.write(f"🌊 {row.get('tide')} | 🌙 {row.get('moon_phase')}")
-
-                with card_act:
+                # 3. Edit and Delete buttons last at the bottom of the card (Delete button styled red)
+                btn_col1, btn_col2 = st.columns([1, 1])
+                with btn_col1:
                     if st.button("Edit", key=f"edit_btn_{idx}"):
                         st.session_state[f"show_edit_panel_{row.get('id')}"] = True
+                with btn_col2:
                     if st.button("Delete", key=f"del_btn_{idx}"):
                         all_c = load_all_catches_raw()
                         for c in all_c:
