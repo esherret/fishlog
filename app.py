@@ -707,9 +707,27 @@ with tab3:
             st.success("Lure added!")
             st.rerun()
 
+    st.divider()
+    st.subheader("Your Lures")
     lures = load_lures()
-    for lure in lures:
-        st.write(f"🎣 {lure['name']}")
+    if lures:
+        for l_idx, lure in enumerate(lures):
+            col_l_img, col_l_info, col_l_act = st.columns([1, 3, 1])
+            with col_l_img:
+                l_path = lure.get("image_path")
+                if l_path and os.path.exists(l_path):
+                    st.image(l_path, width=80)
+            with col_l_info:
+                st.write(f"🎣 **{lure.get('name')}**")
+            with col_l_act:
+                if st.button("Delete Lure", key=f"del_lure_{l_idx}_{lure.get('id')}"):
+                    updated_lures = [l for l in lures if l.get("id") != lure.get("id")]
+                    save_lures(updated_lures)
+                    st.success("Lure deleted!")
+                    st.rerun()
+            st.divider()
+    else:
+        st.info("No lures added yet.")
 
 
 # --- TAB 4: HISTORY & ANALYTICS ---
@@ -782,11 +800,11 @@ with tab4:
             for idx, row in filtered_df.iterrows():
                 st.markdown('<div class="card-media-block">', unsafe_allow_html=True)
                 
-                # 1. Text info displayed first at the top in a larger font with "19.0 in Snook" format
+                # 1. Text info displayed first at the top of the card in larger font with "19.0 in Snook" format
                 st.markdown(f"### 🐟 {row.get('length')} in {row.get('species')} | 📅 {row.get('formatted_datetime')}")
                 st.write(f"🌤️ {row.get('weather')} | 💨 {row.get('wind_speed')} {row.get('wind_direction')} | 🌊 {row.get('tide')} | 🌙 {row.get('moon_phase')}")
 
-                # 2. Media row second (Fish image, Map with zoom control enabled, Lure image)
+                # 2. Media row second (Fish image, Map with zoom control enabled for mouse/buttons, Lure image)
                 media_col1, media_col2, media_col3 = st.columns([2, 2, 1.5])
                 
                 with media_col1:
