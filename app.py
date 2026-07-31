@@ -782,11 +782,11 @@ with tab4:
             for idx, row in filtered_df.iterrows():
                 st.markdown('<div class="card-media-block">', unsafe_allow_html=True)
                 
-                # 1. Text info displayed first at the top of the card
-                st.write(f"🐟 **{row.get('species')}** ({row.get('length')} in) | 📅 {row.get('formatted_datetime')}")
+                # 1. Text info displayed first at the top in a larger font with "19.0 in Snook" format
+                st.markdown(f"### 🐟 {row.get('length')} in {row.get('species')} | 📅 {row.get('formatted_datetime')}")
                 st.write(f"🌤️ {row.get('weather')} | 💨 {row.get('wind_speed')} {row.get('wind_direction')} | 🌊 {row.get('tide')} | 🌙 {row.get('moon_phase')}")
 
-                # 2. Media row second (Fish image, Map with zoom control enabled for mouse/buttons, Lure image)
+                # 2. Media row second (Fish image, Map with zoom control enabled, Lure image)
                 media_col1, media_col2, media_col3 = st.columns([2, 2, 1.5])
                 
                 with media_col1:
