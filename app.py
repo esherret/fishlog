@@ -780,17 +780,15 @@ with tab4:
         else:
             for idx, row in filtered_df.iterrows():
                 st.markdown('<div class="card-trio-container">', unsafe_allow_html=True)
-                trio_col1, trio_col2, trio_col3, trio_info, trio_act = st.columns([1.1, 1.1, 1.1, 2.5, 1])
+                trio_col1, trio_col2, trio_col3, trio_info, trio_act = st.columns([1, 2, 1, 2.5, 1])
                 
-                # 1. Fish image on the left (clickable via expander to view full screen)
+                # 1. Fish image on the left
                 with trio_col1:
                     img_p = row.get("image_path")
                     if img_p and os.path.exists(img_p):
-                        with st.expander("🔍 Click for Full Screen"):
-                            st.image(img_p, width='stretch')
-                        st.image(img_p, width=100)
+                        st.image(img_p, width=90)
 
-                # 2. Location map in the middle (twice as big / zoomed out 25% from 13 -> 12, clickable hint)
+                # 2. Location map in the middle (twice as wide, width=220)
                 with trio_col2:
                     lat_val = row.get("latitude")
                     lon_val = row.get("longitude")
@@ -798,12 +796,10 @@ with tab4:
                         try:
                             lat_f = float(lat_val)
                             lon_f = float(lon_val)
-                            with st.expander("🗺️ Open Catch Map"):
-                                st.info("Go to the 'Catch Map' tab above to view full map interactive details.")
                             m_mini = folium.Map(
                                 location=[lat_f, lon_f],
                                 zoom_start=12,
-                                width=110,
+                                width=200,
                                 height=110,
                                 tiles="Esri.WorldImagery",
                                 zoom_control=False,
@@ -813,7 +809,7 @@ with tab4:
                             )
                             fish_icon_mini = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
                             folium.Marker(location=[lat_f, lon_f], icon=fish_icon_mini).add_to(m_mini)
-                            st_folium(m_mini, width=110, height=110, key=f"history_minimap_{idx}_{row.get('id')}")
+                            st_folium(m_mini, width=200, height=110, key=f"history_minimap_{idx}_{row.get('id')}")
                         except Exception:
                             pass
 
@@ -823,7 +819,7 @@ with tab4:
                     lures_list = load_lures()
                     matched_lure = next((l for l in lures_list if l.get("name", "").lower() == str(lure_name).lower()), None)
                     if matched_lure and matched_lure.get("image_path") and os.path.exists(matched_lure["image_path"]):
-                        st.image(matched_lure["image_path"], width=100)
+                        st.image(matched_lure["image_path"], width=90)
                     else:
                         st.write(f"🎣 {lure_name}")
 
@@ -839,7 +835,7 @@ with tab4:
                     if st.button("Delete", key=f"del_btn_{idx}"):
                         all_c = load_all_catches_raw()
                         for c in all_c:
-                            if c.get("id") == row.get("id"):
+                            if c.get("id"] == row.get("id"):
                                 c["is_deleted"] = "true"
                         save_all_catches_raw(all_c)
                         
