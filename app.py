@@ -332,7 +332,7 @@ if st.sidebar.button("🚪 Sign Out"):
     st.rerun()
 
 # Build navigation tabs dynamically based on Admin role
-tab_names = ["🎣 Log a Catch", "🗺️ Catch Map", "🧩 Manage Lures", "📊 History & Analytics", "🗑️ Recycle Bin"]
+tab_names = ["🎣 Log a Catch", "🗺️ Catch Map", "🧩 Manage Lures", "📋 Catch Log", "🗑️ Recycle Bin"]
 if user.get("is_admin"):
     tab_names.append("🛡️ User Management")
     tab_names.append("🧬 Fish Recognition Library")
@@ -759,9 +759,9 @@ with tab3:
         st.info("No lures added yet.")
 
 
-# --- TAB 4: HISTORY & ANALYTICS ---
+# --- TAB 4: CATCH LOG ---
 with tab4:
-    st.header("Catch History")
+    st.header("Catch Log")
     catches = load_catches()
     if catches:
         filtered_df = get_filtered_catches_df(catches, prefix="hist_tab")
@@ -826,14 +826,23 @@ with tab4:
                     st.warning("No records selected for deletion.")
 
         else:
-            for idx, row in filtered_df.iterrows():
+            # Sort entries starting with newest and going to oldest based on combined datetime or raw date/time objects
+            def parse_row_dt(r):
+                try:
+                    return datetime.strptime(r.get("formatted_datetime", ""), "%m/%d/%Y %I:%M %p")
+                except Exception:
+                    return datetime.min
+
+            sorted_df = filtered_df.sort_values(by="formatted_datetime", ascending=False, key=lambda col: pd.to_datetime(filtered_df["formatted_datetime"], errors="coerce"))
+
+            for idx, row in sorted_df.iterrows():
                 st.markdown('<div class="card-media-block">', unsafe_allow_html=True)
                 
                 # 1. Text info displayed first at the top of the card in larger font with "19.0 in Snook" format
                 st.markdown(f"### 🐟 {row.get('length')} in {row.get('species')} | 📅 {row.get('formatted_datetime')}")
                 st.write(f"🌤️ {row.get('weather')} | 💨 {row.get('wind_speed')} {row.get('wind_direction')} | 🌊 {row.get('tide')} | 🌙 {row.get('moon_phase')}")
 
-                # 2. Media row second (Fish image, Map with zoom control enabled for mouse/buttons, Lure image)
+                # 2. Media row second (Fish image, Map with zoom control enabled for mouse/buttons, Lure image at ~25% size)
                 media_col1, media_col2, media_col3 = st.columns([2, 2, 1.5])
                 
                 with media_col1:
@@ -870,7 +879,7 @@ with tab4:
                     lures_list = load_lures()
                     matched_lure = next((l for l in lures_list if l.get("name", "").lower() == str(lure_name).lower()), None)
                     if matched_lure and matched_lure.get("image_path") and os.path.exists(matched_lure["image_path"]):
-                        st.image(matched_lure["image_path"], use_container_width=True)
+                        st.image(matched_lure["image_path"], width=70)  # Sized down to ~25% relative width
                     else:
                         st.write(f"🎣 {lure_name}")
 
