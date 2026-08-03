@@ -659,7 +659,7 @@ with tab1:
             }
         }
         </script>
-        """, height=340)
+        """, height=380)
 
         if compressed_file_data:
             try:
@@ -1173,7 +1173,7 @@ with tab2:
                             if st.button("Save Changes", type="primary", key=f"save_edit_btn_{row.get('id')}"):
                                 all_c = load_all_catches_raw()
                                 for c in all_c:
-                                    if c.get("id"] == row.get("id"):
+                                    if c.get("id") == row.get("id"):
                                         c["species"] = new_species
                                         c["length"] = new_length
                                         c["lure"] = new_lure
