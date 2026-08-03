@@ -11,9 +11,6 @@ import folium
 from supabase import create_client, Client
 from PIL import Image, ImageOps
 from streamlit_cookies_controller import CookieController
-import streamlit.components.v1 as components
-import base64
-import io
 import numpy as np
 
 # Configure page
@@ -591,7 +588,7 @@ def get_moon_phase(dt):
     else: return "Waning Crescent"
 
 
-# --- TAB 1: LOG A CATCH (PICK FROM BUTTONS WIZARD WITH INSTANT HTML5 COMPRESSION & AUTO-RERUN) ---
+# --- TAB 1: LOG A CATCH (PICK FROM BUTTONS WIZARD WITH RELIABLE FILE UPLOADER) ---
 with tab1:
     st.header("Log a Catch (Pick From Buttons)")
 
@@ -601,91 +598,24 @@ with tab1:
 
     step = st.session_state.catch_wizard_step
 
-    # --- STEP 1: UPLOAD IMAGE & INSTANT RERUN TRIGGER ---
+    # --- STEP 1: UPLOAD IMAGE & ADVANCE ---
     if step == 1:
         st.subheader("Step 1: Take a Photo or Upload a File")
         
-        compressed_file_data = components.html("""
-        <div style="font-family: sans-serif; padding: 20px; text-align: center; background: #fff; min-height: 250px;">
-            <input type="file" id="imageInput" accept="image/*" style="display:none;" onchange="compressImage(event)">
-            <label for="imageInput" style="cursor: pointer; background: #ff4b4b; color: white; padding: 14px 28px; border-radius: 6px; font-size: 16px; font-weight: bold; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                📁 Take Photo or Upload File
-            </label>
-            <p id="status" style="margin-top: 15px; font-size: 14px; color: #444; font-weight: 500;">Tap above to take a photo or select a file from your device</p>
-            <img id="preview" style="max-width: 100%; max-height: 160px; display: none; margin: 10px auto; border-radius: 6px;" />
-        </div>
-        <script>
-        function compressImage(event) {
-            const file = event.target.files[0];
-            if (!file) return;
-            document.getElementById('status').innerText = "Processing instantly...";
+        # Using Streamlit's built-in robust file uploader which guarantees immediate python state handling and clean mobile file-picker dialog
+        catch_image_file = st.file_uploader("Take Photo or Upload File", type=["jpg", "jpeg", "png"], key="wiz_file_input")
+
+        if catch_image_file:
+            processed_image = process_image_orientation(catch_image_file, 0)
+            dt, lat, lon = extract_exif(catch_image_file)
             
-            const reader = new FileReader();
-            reader.readAsDataURL(file);
-            reader.onload = function(e) {
-                const img = new Image();
-                img.src = e.target.result;
-                img.onload = function() {
-                    const canvas = document.createElement('canvas');
-                    const MAX_WIDTH = 800;
-                    const MAX_HEIGHT = 800;
-                    let width = img.width;
-                    let height = img.height;
-                    
-                    if (width > height) {
-                        if (width > MAX_WIDTH) {
-                            height *= MAX_WIDTH / width;
-                            width = MAX_WIDTH;
-                        }
-                    } else {
-                        if (height > MAX_HEIGHT) {
-                            width *= MAX_HEIGHT / height;
-                            height = MAX_HEIGHT;
-                        }
-                    }
-                    
-                    canvas.width = width;
-                    canvas.height = height;
-                    const ctx = canvas.getContext('2d');
-                    ctx.drawImage(img, 0, 0, width, height);
-                    
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-                    document.getElementById('preview').src = dataUrl;
-                    document.getElementById('preview').style.display = 'block';
-                    document.getElementById('status').innerText = "Done! Advancing...";
-                    
-                    window.parent.postMessage({type: 'streamlit:setComponentValue', value: dataUrl}, '*');
-                }
-            }
-        }
-        </script>
-        """, height=380)
+            st.session_state.wizard_data["processed_image"] = processed_image
+            st.session_state.wizard_data["datetime"] = dt if dt else datetime.now()
+            st.session_state.wizard_data["latitude"] = lat if lat is not None else 28.39
+            st.session_state.wizard_data["longitude"] = lon if lon is not None else -80.60
 
-        if compressed_file_data:
-            try:
-                header, encoded = compressed_file_data.split(",", 1)
-                img_bytes = base64.b64decode(encoded)
-                img_io = io.BytesIO(img_bytes)
-                
-                processed_image = Image.open(img_io)
-                if processed_image.mode in ("RGBA", "P"):
-                    processed_image = processed_image.convert("RGB")
-
-                st.session_state.wizard_data["processed_image"] = processed_image
-                st.session_state.wizard_data["rotation"] = 0
-                st.session_state.wizard_data["datetime"] = datetime.now()
-                st.session_state.wizard_data["latitude"] = 28.39
-                st.session_state.wizard_data["longitude"] = -80.60
-
-                st.session_state.catch_wizard_step = 2
-                st.rerun()
-            except Exception:
-                pass
-
-        if "processed_image" in st.session_state.wizard_data:
-            if st.button("➡️ Continue to Fish Type", type="primary"):
-                st.session_state.catch_wizard_step = 2
-                st.rerun()
+            st.session_state.catch_wizard_step = 2
+            st.rerun()
 
     # --- STEP 2: PICK FISH TYPE (GRID OF BUTTONS) ---
     elif step == 2:
@@ -799,15 +729,15 @@ with tab1:
             if st.button("➕ Add Lure & Select"):
                 if new_l_name:
                     l_img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
-                    if new_l_img:
-                        process_image_orientation(new_l_img).save(l_img_path, optimize=True, quality=80)
+                    if new_lure_img := new_l_img:
+                        process_image_orientation(new_lure_img).save(l_img_path, optimize=True, quality=80)
                     else:
                         l_img_path = ""
                     
                     updated_lures = load_lures()
-                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_lure_name, "image_path": l_img_path})
+                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_l_name, "image_path": l_img_path})
                     save_lures(updated_lures)
-                    st.session_state.wizard_data["lure"] = new_lure_name
+                    st.session_state.wizard_data["lure"] = new_l_name
                     st.session_state.catch_wizard_step = 5
                     st.rerun()
 
@@ -1210,87 +1140,6 @@ with tab2:
                 st.divider()
     else:
         st.info("No history found.")
-
-
-# --- TAB 3: CATCH MAP ---
-with tab3:
-    st.header("Catch Location Map")
-    catches = load_catches()
-    if catches:
-        filtered_df = get_filtered_catches_df()
-        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
-        if valid:
-            m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11, tiles="Esri.WorldImagery", attribution_control=False)
-            fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
-            for c in valid:
-                img_path = c.get("image_path")
-                img_html = ""
-                if img_path and os.path.exists(img_path):
-                    import base64
-                    with open(img_path, "rb") as img_file:
-                        encoded = base64.b64encode(img_file.read()).decode("utf-8")
-                        img_html = f"<br><img src='data:image/jpeg;base64,{encoded}' width='150' style='border-radius: 4px; margin-top: 5px;'/>"
-                
-                popup_html = f"""
-                <div style="font-family: sans-serif; width: 160px;">
-                    <b>🐟 {c.get('species')}</b><br>
-                    <b>Length:</b> {c.get('length')} in<br>
-                    <b>Date:</b> {c.get('formatted_datetime')}<br>
-                    <b>Lure:</b> {c.get('lure')}<br>
-                    {img_html}
-                </div>
-                """
-                folium.Marker(
-                    location=[float(c["latitude"]), float(c["longitude"])],
-                    popup=folium.Popup(popup_html, max_width=200),
-                    icon=fish_icon
-                ).add_to(m)
-            st_folium(m, width=700, height=500)
-        else:
-            st.info("No mapped catches match filters.")
-    else:
-        st.info("No catches recorded yet.")
-
-
-# --- TAB 4: MANAGE LURES ---
-with tab4:
-    st.header("Manage Lures")
-    with st.form("lure_form", clear_on_submit=True):
-        l_name = st.text_input("New Lure Name")
-        l_img = st.file_uploader("Upload Lure Image", type=["jpg", "jpeg", "png"])
-        if st.form_submit_button("Add Lure") and l_name:
-            img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
-            if l_img:
-                process_image_orientation(l_img).save(img_path, optimize=True, quality=80)
-            else:
-                img_path = ""
-            lures = load_lures()
-            lures.append({"id": str(uuid.uuid4()), "name": l_name, "image_path": img_path})
-            save_lures(lures)
-            st.success("Lure added!")
-            st.rerun()
-
-    st.divider()
-    st.subheader("Your Lures")
-    lures = load_lures()
-    if lures:
-        for l_idx, lure in enumerate(lures):
-            col_l_img, col_l_info, col_l_act = st.columns([1, 3, 1])
-            with col_l_img:
-                l_path = lure.get("image_path")
-                if l_path and os.path.exists(l_path):
-                    st.image(l_path, width=80)
-            with col_l_info:
-                st.write(f"🎣 **{lure.get('name')}**")
-            with col_l_act:
-                if st.button("Delete Lure", key=f"del_lure_{l_idx}_{lure.get('id')}"):
-                    updated_lures = [l for l in lures if l.get("id") != lure.get("id")]
-                    save_lures(updated_lures)
-                    st.success("Lure deleted!")
-                    st.rerun()
-            st.divider()
-    else:
-        st.info("No lures added yet.")
 
 
 # --- ADMIN TAB 1: USER MANAGEMENT CONSOLE & IMPERSONATION ---
