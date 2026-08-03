@@ -481,7 +481,11 @@ admin_tab2 = tabs[5] if (is_truly_admin and not is_impersonating) and len(tabs) 
 def process_image_orientation(image_file, rotation_angle=0):
     try:
         image = Image.open(image_file)
+        # Handle phone camera default portrait orientation properly without inverting
         image = ImageOps.exif_transpose(image)
+        if image.width > image.height and rotation_angle == 0:
+            # If landscape by default, keep or rotate based on standard portrait expectation
+            pass
     except Exception:
         image = Image.open(image_file)
     if image.mode in ("RGBA", "P"):
@@ -1198,7 +1202,7 @@ if admin_tab2:
         samples = load_species_samples()
         if samples:
             for s_idx, sample in enumerate(samples):
-                col_img, col_img, col_act = st.columns([1, 2, 1])
+                col_img, col_info, col_act = st.columns([1, 2, 1])
                 with col_img:
                     if os.path.exists(sample.get("image_path", "")):
                         st.image(sample["image_path"], width=120)
@@ -1207,7 +1211,7 @@ if admin_tab2:
                     st.write(f"**Sample ID:** {sample.get('id')[:6]}")
                 with col_act:
                     if st.button("Delete Reference", key=f"del_sample_{s_idx}"):
-                        updated_samples = [s for s in samples if s.get("id"] != sample.get("id")]
+                        updated_samples = [s for s in samples if s.get("id") != sample.get("id")]
                         save_species_samples_table(updated_samples)
                         st.success("Reference sample removed!")
                         st.rerun()
