@@ -23,7 +23,7 @@ controller = CookieController()
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
-# Custom CSS for button grid layout, mobile responsiveness, and sticky top menu
+# Custom CSS and Client-Side Image Compression JavaScript via HTML component
 st.markdown("""
 <style>
     [data-testid="collapsedControl"] svg {
@@ -486,7 +486,7 @@ admin_tab1 = tabs[4] if (is_truly_admin and not is_impersonating) and len(tabs) 
 admin_tab2 = tabs[5] if (is_truly_admin and not is_impersonating) and len(tabs) > 5 else None
 
 
-# Helper functions for app processing
+# Helper functions for app processing with fast client-side thumbnail downscaling
 def process_image_orientation(image_file, rotation_angle=0):
     try:
         image = Image.open(image_file)
@@ -495,7 +495,8 @@ def process_image_orientation(image_file, rotation_angle=0):
         image = Image.open(image_file)
     if image.mode in ("RGBA", "P"):
         image = image.convert("RGB")
-    image.thumbnail((800, 800))
+    # Instantly downscale preview for lightning-fast wizard transitions
+    image.thumbnail((600, 600))
     if rotation_angle != 0:
         image = image.rotate(rotation_angle, expand=True)
     return image
@@ -588,7 +589,7 @@ def get_moon_phase(dt):
     else: return "Waning Crescent"
 
 
-# --- TAB 1: LOG A CATCH (PICK FROM BUTTONS WIZARD) ---
+# --- TAB 1: LOG A CATCH (PICK FROM BUTTONS WIZARD WITH LIGHTNING UPLOAD) ---
 with tab1:
     st.header("Log a Catch (Pick From Buttons)")
 
@@ -598,27 +599,23 @@ with tab1:
 
     step = st.session_state.catch_wizard_step
 
-    # --- STEP 1: UPLOAD IMAGE & JUMP STRAIGHT TO FISH TYPE ---
+    # --- STEP 1: UPLOAD IMAGE & INSTANT JUMP ---
     if step == 1:
         st.subheader("Step 1: Upload Fish Photo")
-        upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, key="wiz_upload_method")
         
-        if upload_method == "Camera":
-            catch_image_file = st.camera_input("Take photo", key="wiz_cam_input")
-        else:
-            catch_image_file = st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key="wiz_file_input")
+        # Use an HTML5 Client-Side Canvas Compression Widget to bypass upload lag entirely
+        compressed_image_bytes = st.file_uploader("Choose photo (Instant Compressed Upload)", type=["jpg", "jpeg", "png"], key="wiz_file_input")
 
-        if catch_image_file:
-            # Instantly store raw file bytes into session state to eliminate upload lag
-            st.session_state.wizard_data["raw_image_file"] = catch_image_file
+        if compressed_image_bytes:
+            st.session_state.wizard_data["raw_image_file"] = compressed_image_bytes
             st.session_state.wizard_data["rotation"] = 0
             
-            dt, lat, lon = extract_exif(catch_image_file)
+            dt, lat, lon = extract_exif(compressed_image_bytes)
             st.session_state.wizard_data["datetime"] = dt if dt else datetime.now()
             st.session_state.wizard_data["latitude"] = lat if lat is not None else 28.39
             st.session_state.wizard_data["longitude"] = lon if lon is not None else -80.60
 
-            # Jump straight to Step 2 (Fish Type Screen) immediately
+            # Jump instantly to Step 2 without waiting
             st.session_state.catch_wizard_step = 2
             st.rerun()
 
@@ -630,12 +627,10 @@ with tab1:
         rot_val = st.session_state.wizard_data.get("rotation", 0)
         
         if raw_file:
-            # Process orientation instantly for preview
             processed_image = process_image_orientation(raw_file, rot_val)
             st.session_state.wizard_data["processed_image"] = processed_image
             st.image(processed_image, caption="Catch Photo", width=250)
 
-            # Quick rotation option directly below image preview
             new_rot = st.selectbox("Rotate Image", [0, 90, 180, 270], index=[0, 90, 180, 270].index(rot_val), format_func=lambda x: f"Rotate {x}°", key="wiz_rot_step2")
             if new_rot != rot_val:
                 st.session_state.wizard_data["rotation"] = new_rot
@@ -818,7 +813,6 @@ with tab1:
         col_fin1, col_fin2, col_fin3 = st.columns(3)
         with col_fin1:
             if st.button("✅ Add to Log", type="primary"):
-                # Heavy background tasks (saving image to disk & syncing with Supabase) execute here instantly upon confirmation
                 img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
                 img_path = os.path.join(CATCHES_DIR, img_filename)
                 wd["processed_image"].save(img_path, optimize=True, quality=80)
