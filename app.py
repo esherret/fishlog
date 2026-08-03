@@ -601,12 +601,11 @@ with tab1:
 
     step = st.session_state.catch_wizard_step
 
-    # --- STEP 1: INSTANT CLIENT-SIDE COMPRESSED UPLOAD ---
+    # --- STEP 1: UPLOAD IMAGE & INSTANT JUMP ---
     if step == 1:
         st.subheader("Step 1: Upload Fish Photo")
         st.write("Select or capture an image. It will instantly compress in your browser for zero-wait loading:")
 
-        # HTML5 Canvas client-side resizer component
         compressed_file_data = components.html("""
         <div style="font-family: sans-serif; padding: 10px; border: 2px dashed #ccc; border-radius: 8px; text-align: center; background: #fafafa;">
             <input type="file" id="imageInput" accept="image/*" style="display:none;" onchange="compressImage(event)">
@@ -656,7 +655,6 @@ with tab1:
                     document.getElementById('preview').style.display = 'block';
                     document.getElementById('status').innerText = "Ready! Click below to proceed.";
                     
-                    // Send compressed base64 back to Streamlit via parent window or custom event
                     window.parent.postMessage({type: 'streamlit:setComponentValue', value: dataUrl}, '*');
                 }
             }
@@ -664,7 +662,6 @@ with tab1:
         </script>
         """, height=280)
 
-        # Check if the component returned our instant compressed base64 image string
         if compressed_file_data:
             try:
                 header, encoded = compressed_file_data.split(",", 1)
@@ -686,7 +683,6 @@ with tab1:
             except Exception:
                 pass
 
-        # Fallback standard uploader just in case component container is restricted
         st.divider()
         st.write("Or use standard uploader:")
         standard_file = st.file_uploader("Standard Upload", type=["jpg", "jpeg", "png"], key="std_fallback_uploader")
@@ -709,7 +705,7 @@ with tab1:
             st.image(st.session_state.wizard_data["processed_image"], caption="Catch Photo", width=250)
 
         samples = load_species_samples()
-        known_species = sorted(list(set([s.get("species"] for s in samples if s.get("species")])))
+        known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")])))
         if not known_species:
             known_species = ["Snook", "Redfish", "Trout", "Tarpon", "Bass", "Flounder"]
         known_species = sorted(list(set(known_species)))
@@ -1392,7 +1388,7 @@ if admin_tab2:
                         "image_path": img_path
                     })
                     save_species_samples_table(samples)
-                    st.success("New reference sample added successfully!")
+                    st.success("Reference sample added successfully!")
                     st.rerun()
                 else:
                     st.error("Please provide both a species name and an image file.")
@@ -1411,7 +1407,7 @@ if admin_tab2:
                     st.write(f"**Sample ID:** {sample.get('id')[:6]}")
                 with col_act:
                     if st.button("Delete Reference", key=f"del_sample_{s_idx}"):
-                        updated_samples = [s for s in samples if s.get("id"] != sample.get("id")]
+                        updated_samples = [s for s in samples if s.get("id") != sample.get("id")]
                         save_species_samples_table(updated_samples)
                         st.success("Reference sample removed!")
                         st.rerun()
