@@ -797,7 +797,7 @@ with tab1:
                         l_img_path = ""
                     
                     updated_lures = load_lures()
-                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_lure_name, "image_path": l_img_path})
+                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_l_name, "image_path": l_img_path})
                     save_lures(updated_lures)
                     st.session_state.wizard_data["lure"] = new_lure_name
                     st.session_state.catch_wizard_step = 5
@@ -1076,7 +1076,7 @@ with tab2:
                         save_all_catches_raw(all_c)
                         
                         samples = load_species_samples()
-                        updated_samples = [s for s in samples if s.get("catch_id"] != row.get("id"))
+                        updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
                         save_species_samples_table(updated_samples)
                         
                         st.success("Moved to Recycle Bin!")
