@@ -827,12 +827,6 @@ with tab4:
 
         else:
             # Sort entries starting with newest and going to oldest based on combined datetime or raw date/time objects
-            def parse_row_dt(r):
-                try:
-                    return datetime.strptime(r.get("formatted_datetime", ""), "%m/%d/%Y %I:%M %p")
-                except Exception:
-                    return datetime.min
-
             sorted_df = filtered_df.sort_values(by="formatted_datetime", ascending=False, key=lambda col: pd.to_datetime(filtered_df["formatted_datetime"], errors="coerce"))
 
             for idx, row in sorted_df.iterrows():
@@ -842,8 +836,8 @@ with tab4:
                 st.markdown(f"### 🐟 {row.get('length')} in {row.get('species')} | 📅 {row.get('formatted_datetime')}")
                 st.write(f"🌤️ {row.get('weather')} | 💨 {row.get('wind_speed')} {row.get('wind_direction')} | 🌊 {row.get('tide')} | 🌙 {row.get('moon_phase')}")
 
-                # 2. Media row second (Fish image, Map with zoom control enabled for mouse/buttons, Lure image at ~25% size)
-                media_col1, media_col2, media_col3 = st.columns([2, 2, 1.5])
+                # 2. Media row: 2 columns ([1, 1]) -> Left: Fish image, Right: Map on top, Lure image + name underneath map
+                media_col1, media_col2 = st.columns([1, 1])
                 
                 with media_col1:
                     img_p = row.get("image_path")
@@ -861,7 +855,7 @@ with tab4:
                                 location=[lat_f, lon_f],
                                 zoom_start=12,
                                 width="100%",
-                                height=280,
+                                height=240,
                                 tiles="Esri.WorldImagery",
                                 zoom_control=True,
                                 dragging=False,
@@ -870,18 +864,20 @@ with tab4:
                             )
                             fish_icon_mini = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
                             folium.Marker(location=[lat_f, lon_f], icon=fish_icon_mini).add_to(m_mini)
-                            st_folium(m_mini, use_container_width=True, height=280, key=f"history_minimap_{idx}_{row.get('id')}")
+                            st_folium(m_mini, use_container_width=True, height=240, key=f"history_minimap_{idx}_{row.get('id')}")
                         except Exception:
                             pass
 
-                with media_col3:
+                    # Lure under the map with name and increased size (width=140)
                     lure_name = row.get("lure")
                     lures_list = load_lures()
                     matched_lure = next((l for l in lures_list if l.get("name", "").lower() == str(lure_name).lower()), None)
+                    st.write("")
                     if matched_lure and matched_lure.get("image_path") and os.path.exists(matched_lure["image_path"]):
-                        st.image(matched_lure["image_path"], width=70)  # Sized down to ~25% relative width
+                        st.image(matched_lure["image_path"], width=140)
+                        st.write(f"🎣 **{lure_name}**")
                     else:
-                        st.write(f"🎣 {lure_name}")
+                        st.write(f"🎣 **Lure:** {lure_name}")
 
                 # 3. Edit and Delete buttons last at the bottom of the card (Delete button styled red)
                 btn_col1, btn_col2 = st.columns([1, 1])
