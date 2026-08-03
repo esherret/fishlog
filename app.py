@@ -325,9 +325,9 @@ if not st.session_state.current_user:
 
 # --- LOGGED IN USER APP INTERFACE ---
 user = st.session_state.current_user
+real_admin = st.session_state.get("real_admin_user")
 
 # Check if an admin is currently impersonating someone
-real_admin = st.session_state.get("real_admin_user")
 if real_admin and real_admin.get("id") != user.get("id"):
     st.sidebar.warning(f"⚠️ **IMPERSONATING:** {user['first_name']} {user['last_name']}")
     if st.sidebar.button("🛑 Stop Impersonating (Return to Admin)"):
@@ -451,19 +451,18 @@ def get_filtered_catches_df():
     return filtered_df
 
 
-# Build navigation tabs dynamically in the requested order
-# Note: Real admin checks use real_admin_user or current_user if admin
-effective_is_admin = (real_admin is not None) or user.get("is_admin")
+# Build navigation tabs dynamically based strictly on true admin status (real_admin)
+is_truly_admin = real_admin is not None and real_admin.get("is_admin", False)
 
 tab_names = ["🎣 Log a Catch", "📋 Catch Log", "🗺️ Catch Map", "🧩 Manage Lures"]
-if effective_is_admin:
+if is_truly_admin:
     tab_names.append("🛡️ User Management")
     tab_names.append("🧬 Fish Recognition Library")
 
 tabs = st.tabs(tab_names)
 tab1, tab2, tab3, tab4 = tabs[0], tabs[1], tabs[2], tabs[3]
-admin_tab1 = tabs[4] if effective_is_admin and len(tabs) > 4 else None
-admin_tab2 = tabs[5] if effective_is_admin and len(tabs) > 5 else None
+admin_tab1 = tabs[4] if is_truly_admin and len(tabs) > 4 else None
+admin_tab2 = tabs[5] if is_truly_admin and len(tabs) > 5 else None
 
 
 # Helper functions for app processing
