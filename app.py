@@ -591,7 +591,7 @@ def get_moon_phase(dt):
     else: return "Waning Crescent"
 
 
-# --- TAB 1: LOG A CATCH (PICK FROM BUTTONS WIZARD WITH INSTANT HTML5 COMPRESSION) ---
+# --- TAB 1: LOG A CATCH (PICK FROM BUTTONS WIZARD WITH INSTANT HTML5 COMPRESSION & AUTO-RERUN) ---
 with tab1:
     st.header("Log a Catch (Pick From Buttons)")
 
@@ -601,18 +601,18 @@ with tab1:
 
     step = st.session_state.catch_wizard_step
 
-    # --- STEP 1: UPLOAD IMAGE & INSTANT JUMP ---
+    # --- STEP 1: UPLOAD IMAGE & INSTANT RERUN TRIGGER ---
     if step == 1:
         st.subheader("Step 1: Take a Photo or Upload a File")
         
         compressed_file_data = components.html("""
-        <div style="font-family: sans-serif; padding: 10px; text-align: center; background: #fff;">
+        <div style="font-family: sans-serif; padding: 20px; text-align: center; background: #fff; min-height: 250px;">
             <input type="file" id="imageInput" accept="image/*" style="display:none;" onchange="compressImage(event)">
-            <label for="imageInput" style="cursor: pointer; background: #ff4b4b; color: white; padding: 12px 24px; border-radius: 6px; font-size: 16px; font-weight: bold; display: inline-block;">
+            <label for="imageInput" style="cursor: pointer; background: #ff4b4b; color: white; padding: 14px 28px; border-radius: 6px; font-size: 16px; font-weight: bold; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 📁 Take Photo or Upload File
             </label>
-            <p id="status" style="margin-top: 10px; font-size: 14px; color: #444; font-weight: 500;">Tap above to take a photo or select a file from your device</p>
-            <img id="preview" style="max-width: 100%; max-height: 180px; display: none; margin: 5px auto; border-radius: 6px;" />
+            <p id="status" style="margin-top: 15px; font-size: 14px; color: #444; font-weight: 500;">Tap above to take a photo or select a file from your device</p>
+            <img id="preview" style="max-width: 100%; max-height: 160px; display: none; margin: 10px auto; border-radius: 6px;" />
         </div>
         <script>
         function compressImage(event) {
@@ -652,14 +652,15 @@ with tab1:
                     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
                     document.getElementById('preview').src = dataUrl;
                     document.getElementById('preview').style.display = 'block';
-                    document.getElementById('status').innerText = "Done! Loading next step...";
+                    document.getElementById('status').innerText = "Done! Advancing...";
                     
+                    // Directly push value back to Streamlit
                     window.parent.postMessage({type: 'streamlit:setComponentValue', value: dataUrl}, '*');
                 }
             }
         }
         </script>
-        """, height=280)
+        """, height=320)
 
         if compressed_file_data:
             try:
@@ -677,10 +678,17 @@ with tab1:
                 st.session_state.wizard_data["latitude"] = 28.39
                 st.session_state.wizard_data["longitude"] = -80.60
 
+                # Automatically advance to Step 2 instantly upon data receipt
                 st.session_state.catch_wizard_step = 2
                 st.rerun()
             except Exception:
                 pass
+
+        # Prominent fallback button so user can advance immediately if needed
+        if "processed_image" in st.session_state.wizard_data:
+            if st.button("➡️ Continue to Fish Type", type="primary"):
+                st.session_state.catch_wizard_step = 2
+                st.rerun()
 
     # --- STEP 2: PICK FISH TYPE (GRID OF BUTTONS) ---
     elif step == 2:
@@ -800,7 +808,7 @@ with tab1:
                         l_img_path = ""
                     
                     updated_lures = load_lures()
-                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_l_name, "image_path": l_img_path})
+                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_lure_name, "image_path": l_img_path})
                     save_lures(updated_lures)
                     st.session_state.wizard_data["lure"] = new_lure_name
                     st.session_state.catch_wizard_step = 5
@@ -1213,7 +1221,7 @@ with tab3:
     catches = load_catches()
     if catches:
         filtered_df = get_filtered_catches_df()
-        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
+        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude"] is not None and r.get("longitude") is not None]
         if valid:
             m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11, tiles="Esri.WorldImagery", attribution_control=False)
             fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
@@ -1365,7 +1373,7 @@ if admin_tab2:
                     process_image_orientation(new_sample_file).save(img_path, optimize=True, quality=80)
                     
                     samples = load_species_samples()
-                    samples.component.append({
+                    samples.append({
                         "id": str(uuid.uuid4()),
                         "user_id": user["id"],
                         "catch_id": "manual_admin_upload",
