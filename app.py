@@ -595,24 +595,26 @@ with tab1:
         formatted_dt_str = combined_dt.strftime("%m/%d/%Y %I:%M %p")
         weather_desc, wind_speed, wind_dir = get_nws_weather(manual_lat, manual_lon)
 
-        # Determine most recent upload species for this user
+        # Determine most recent upload species and lure for this user
         all_user_catches = load_catches()
         default_species = "Snook"
+        default_lure = None
         if all_user_catches:
-            # Sort raw or existing catches by date/time or appearance
             last_catch = all_user_catches[-1]
             if last_catch.get("species"):
                 default_species = last_catch.get("species")
+            if last_catch.get("lure"):
+                default_lure = last_catch.get("lure")
 
         samples = load_species_samples()
-        known_species = sorted(list(set([s.get("species"] for s in samples if s.get("species")])))
+        known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")])))
         if not known_species:
             known_species = ["Snook", "Redfish", "Trout", "Tarpon", "Bass", "Flounder"]
-        if default_species not in known_species:
-            known_species.insert(0, default_species)
+        known_species = sorted(list(set(known_species)))
 
-        # 1. Type of Fish first
-        species = st.selectbox("Select Type of Fish", known_species, index=known_species.index(default_species) if default_species in known_species else 0, key=f"c_species_sb_{v}")
+        # 1. Type of Fish first (Alphabetical order)
+        d_sp_idx = known_species.index(default_species) if default_species in known_species else 0
+        species = st.selectbox("Select Type of Fish", known_species, index=d_sp_idx, key=f"c_species_sb_{v}")
 
         # 2. Length next
         length_options = [f"{x:.1f}" for x in [i * 0.5 for i in range(81)]]
@@ -620,11 +622,16 @@ with tab1:
         selected_len_str = st.selectbox("Length (Inches)", length_options, index=default_len_idx, key=f"c_len_{v}")
         length = float(selected_len_str)
 
-        # 3. Lure next + Quick Add Option
+        # 3. Lure next + Quick Add Option (Alphabetical order, default to last selected lure)
         lures = load_lures()
-        lure_names = [l["name"] for l in lures] if lures else []
+        lure_names = sorted(list(set([l["name"] for l in lures]))) if lures else []
         lure_options = lure_names + ["➕ Add New Lure..."]
-        selected_lure_choice = st.selectbox("Lure Used", lure_options, key=f"c_lure_sb_{v}")
+        
+        d_lure_idx = 0
+        if default_lure in lure_names:
+            d_lure_idx = lure_names.index(default_lure)
+
+        selected_lure_choice = st.selectbox("Lure Used", lure_options, index=d_lure_idx, key=f"c_lure_sb_{v}")
         
         selected_lure = selected_lure_choice
         if selected_lure_choice == "➕ Add New Lure...":
@@ -886,6 +893,7 @@ with tab2:
                         curr_species = row.get("species", "")
                         if curr_species not in known_species:
                             known_species.insert(0, curr_species)
+                        known_species = sorted(list(set(known_species)))
                         
                         species_options = known_species + ["➕ Add New Fish Type..."]
                         d_sp_idx = species_options.index(curr_species) if curr_species in species_options else 0
@@ -920,7 +928,7 @@ with tab2:
                         new_length = float(selected_edit_len_str)
                         
                         lures_list = load_lures()
-                        lure_names = [l["name"] for l in lures_list] if lures_list else []
+                        lure_names = sorted(list(set([l["name"] for l in lures_list]))) if lures_list else []
                         lure_options = lure_names + ["➕ Add New Lure..."]
                         curr_lure = row.get("lure", "")
                         d_idx = lure_options.index(curr_lure) if curr_lure in lure_options else 0
