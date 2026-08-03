@@ -758,14 +758,54 @@ with tab1:
         st.subheader("Step 5: Review & Confirm Catch")
         
         wd = st.session_state.wizard_data
-        st.write(f"🐟 **Fish Type:** {wd.get('species')}")
-        st.write(f"📏 **Length:** {wd.get('length')} inches")
-        st.write(f"🎣 **Lure:** {wd.get('lure')}")
-        st.write(f"📅 **Date/Time:** {wd.get('datetime').strftime('%m/%d/%Y %I:%M %p')}")
-        
-        if "processed_image" in wd:
-            st.image(wd["processed_image"], width=300)
+        lat_val = wd.get("latitude", 28.39)
+        lon_val = wd.get("longitude", -80.60)
+        dt_val = wd.get("datetime", datetime.now())
+        weather_desc, wind_speed, wind_dir = get_nws_weather(lat_val, lon_val)
+        tide_val = get_tide_info(lat_val, lon_val, dt_val)
+        moon_val = get_moon_phase(dt_val)
 
+        col_rev1, col_rev2 = st.columns([1, 1])
+        with col_rev1:
+            st.markdown(f"### 🐟 {wd.get('length')} in {wd.get('species')}")
+            st.write(f"📅 **Date/Time:** {dt_val.strftime('%m/%d/%Y %I:%M %p')}")
+            st.write(f"🎣 **Lure:** {wd.get('lure')}")
+            st.write(f"🌤️ **Weather:** {weather_desc}")
+            st.write(f"💨 **Wind:** {wind_speed} {wind_dir}")
+            st.write(f"🌊 **Tide:** {tide_val}")
+            st.write(f"🌙 **Moon:** {moon_val}")
+            st.write(f"📍 **Coordinates:** {lat_val:.4f}, {lon_val:.4f}")
+
+            if "processed_image" in wd:
+                st.image(wd["processed_image"], width=280)
+
+        with col_rev2:
+            st.write("📍 **Catch Location Map:**")
+            try:
+                m_rev = folium.Map(
+                    location=[float(lat_val), float(lon_val)],
+                    zoom_start=12,
+                    width="100%",
+                    height=280,
+                    tiles="Esri.WorldImagery",
+                    zoom_control=True,
+                    dragging=False,
+                    scrollWheelZoom=False,
+                    attribution_control=False
+                )
+                fish_icon_rev = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
+                folium.Marker(location=[float(lat_val), float(lon_val)], icon=fish_icon_rev).add_to(m_rev)
+                st_folium(m_rev, width='stretch', height=280, key="review_minimap")
+            except Exception:
+                pass
+
+            lures_list = load_lures()
+            matched_lure = next((l for l in lures_list if l.get("name", "").lower() == str(wd.get('lure')).lower()), None)
+            if matched_lure and matched_lure.get("image_path") and os.path.exists(matched_lure["image_path"]):
+                st.write("🎣 **Lure Image:**")
+                st.image(matched_lure["image_path"], width=120)
+
+        st.divider()
         col_fin1, col_fin2, col_fin3 = st.columns(3)
         with col_fin1:
             if st.button("✅ Add to Log", type="primary"):
@@ -774,28 +814,23 @@ with tab1:
                 wd["processed_image"].save(img_path, optimize=True, quality=80)
 
                 catch_id = str(uuid.uuid4())
-                manual_lat = wd.get("latitude", 28.39)
-                manual_lon = wd.get("longitude", -80.60)
-                combined_dt = wd.get("datetime", datetime.now())
-                weather_desc, wind_speed, wind_dir = get_nws_weather(manual_lat, manual_lon)
-
                 catches = load_all_catches_raw()
                 catches.append({
                     "id": catch_id,
                     "user_id": user["id"],
-                    "date": combined_dt.strftime("%m/%d/%Y"),
-                    "time": combined_dt.strftime("%I:%M %p"),
-                    "formatted_datetime": combined_dt.strftime("%m/%d/%Y %I:%M %p"),
-                    "latitude": manual_lat,
-                    "longitude": manual_lon,
+                    "date": dt_val.strftime("%m/%d/%Y"),
+                    "time": dt_val.strftime("%I:%M %p"),
+                    "formatted_datetime": dt_val.strftime("%m/%d/%Y %I:%M %p"),
+                    "latitude": lat_val,
+                    "longitude": lon_val,
                     "species": wd.get("species"),
                     "length": wd.get("length"),
                     "lure": wd.get("lure"),
                     "weather": weather_desc,
                     "wind_speed": wind_speed,
                     "wind_direction": wind_dir,
-                    "tide": get_tide_info(manual_lat, manual_lon, combined_dt),
-                    "moon_phase": get_moon_phase(combined_dt),
+                    "tide": tide_val,
+                    "moon_phase": moon_val,
                     "image_path": img_path,
                     "is_deleted": "false"
                 })
@@ -819,7 +854,6 @@ with tab1:
 
         with col_fin2:
             if st.button("✏️ Edit Details"):
-                # Take user right back to the fish type selection screen (Step 2)
                 st.session_state.catch_wizard_step = 2
                 st.rerun()
 
