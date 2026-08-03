@@ -325,6 +325,19 @@ if st.sidebar.button("🚪 Sign Out"):
     st.session_state.current_user = None
     st.rerun()
 
+# --- HANDLE CLEAR FILTERS CALLBACK ---
+if "clear_filters_flag" not in st.session_state:
+    st.session_state.clear_filters_flag = False
+
+if st.session_state.clear_filters_flag:
+    st.session_state.sb_species = "All"
+    st.session_state.sb_min_size = "All"
+    st.session_state.sb_tide = "All"
+    st.session_state.sb_min_wind_speed = "All"
+    st.session_state.sb_wind_dir = "All"
+    st.session_state.sb_lure = "All"
+    st.session_state.clear_filters_flag = False
+
 # --- CENTRALIZED SIDEBAR FILTERS (RENDERED ONCE) ---
 st.sidebar.header("Filter Log Entries")
 all_catches_for_filter = load_catches()
@@ -777,7 +790,7 @@ with tab2:
                 </div>
                 """
                 folium.Marker(
-                    location=[float(c["latitude"]), float(c["longitude"])],
+                    location=[float(c["latitude"], float(c["longitude"]))],
                     popup=folium.Popup(popup_html, max_width=200),
                     icon=fish_icon
                 ).add_to(m)
@@ -836,6 +849,35 @@ with tab4:
     if catches:
         filtered_df = get_filtered_catches_df()
         
+        # Build active filter summary sentence
+        filter_parts = []
+        if selected_species != "All":
+            filter_parts.append(f"species equal to **{selected_species}**")
+        if min_size > 0.0:
+            filter_parts.append(f"size of **{min_size:.1f} inches or greater**")
+        if selected_tide != "All":
+            filter_parts.append(f"tide condition of **{selected_tide}**")
+        if selected_min_wind_speed != "All":
+            filter_parts.append(f"wind speed of **{selected_min_wind_speed}**")
+        if selected_wind_dir_label != "All":
+            filter_parts.append(f"wind direction in the **{selected_wind_dir_label}** window")
+        if selected_lure != "All":
+            filter_parts.append(f"use of the **{selected_lure}** lure")
+
+        if filter_parts:
+            if len(filter_parts) == 1:
+                filter_sentence = f"You are filtering your log on catches with {filter_parts[0]}."
+            elif len(filter_parts) == 2:
+                filter_sentence = f"You are filtering your log on catches with {filter_parts[0]} and {filter_parts[1]}."
+            else:
+                filter_sentence = f"You are filtering your log on catches with {', '.join(filter_parts[:-1])}, and {filter_parts[-1]}."
+            
+            st.markdown(f"*{filter_sentence}*")
+            if st.button("Clear all filters"):
+                st.session_state.clear_filters_flag = True
+                st.rerun()
+            st.divider()
+
         view_style = st.radio("History View Style", ["Card View", "List View"], horizontal=True, key="history_view_style_radio")
 
         if view_style == "List View":
