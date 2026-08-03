@@ -364,7 +364,7 @@ if all_catches_for_filter:
     tide_list = ["All"] + sorted(list(df_filter["tide"].dropna().unique())) if "tide" in df_filter.columns else ["All"]
     selected_tide = st.sidebar.selectbox("Tide", tide_list, key="sb_tide")
 
-    min_wind_speed_options = ["All", "0+ mph", "5+ mph", "10+ mph", "15+ mph", "20+ mph"]
+    min_wind_speed_options = ["All"] + [f"{i}+ mph" for i in range(16)]
     selected_min_wind_speed = st.sidebar.selectbox("Minimum Wind Speed", min_wind_speed_options, key="sb_min_wind_speed")
 
     wind_dir_options = ["All"] + [w[0] for w in wind_dir_windows]
