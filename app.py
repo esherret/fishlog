@@ -23,7 +23,7 @@ controller = CookieController()
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
-# Custom CSS for sidebar filter icon, and responsive media layout
+# Custom CSS for sidebar filter icon, responsive media layout, and sticky top navigation menu
 st.markdown("""
 <style>
     [data-testid="collapsedControl"] svg {
@@ -59,6 +59,16 @@ st.markdown("""
             flex: 0 0 90% !important;
             margin: 0 auto 12px auto !important;
         }
+    }
+    /* Lock the main navigation tab header bar to the top of the viewport when scrolling */
+    div[data-testid="stVerticalBlock"] > div:has(> div[data-testid="stTabs"]) {
+        position: sticky;
+        top: 0px;
+        z-index: 99999;
+        background-color: white;
+        padding-top: 10px;
+        padding-bottom: 5px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -471,11 +481,7 @@ admin_tab2 = tabs[5] if (is_truly_admin and not is_impersonating) and len(tabs) 
 def process_image_orientation(image_file, rotation_angle=0):
     try:
         image = Image.open(image_file)
-        # Ensure default portrait orientation if height is less than width and no explicit rotation requested
-        if image.height < image.width and rotation_angle == 0:
-            image = image.rotate(90, expand=True)
-        else:
-            image = ImageOps.exif_transpose(image)
+        image = ImageOps.exif_transpose(image)
     except Exception:
         image = Image.open(image_file)
     if image.mode in ("RGBA", "P"):
@@ -671,7 +677,17 @@ with tab1:
         final_combined_dt = datetime.combine(log_date, log_time)
         final_formatted_dt_str = final_combined_dt.strftime("%m/%d/%Y %I:%M %p")
 
-        if st.button("Save Catch Entry", type="primary", key=f"save_btn_{v}"):
+        col_act1, col_act2 = st.columns(2)
+        with col_act1:
+            save_clicked = st.button("Save Catch Entry", type="primary", key=f"save_btn_{v}")
+        with col_act2:
+            cancel_clicked = st.button("Cancel Upload", key=f"cancel_btn_{v}")
+
+        if cancel_clicked:
+            st.session_state.form_version += 1
+            st.rerun()
+
+        if save_clicked:
             img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
             img_path = os.path.join(CATCHES_DIR, img_filename)
             processed_image.save(img_path, optimize=True, quality=80)
@@ -1182,7 +1198,7 @@ if admin_tab2:
         samples = load_species_samples()
         if samples:
             for s_idx, sample in enumerate(samples):
-                col_img, col_info, col_act = st.columns([1, 2, 1])
+                col_img, col_img, col_act = st.columns([1, 2, 1])
                 with col_img:
                     if os.path.exists(sample.get("image_path", "")):
                         st.image(sample["image_path"], width=120)
@@ -1191,7 +1207,7 @@ if admin_tab2:
                     st.write(f"**Sample ID:** {sample.get('id')[:6]}")
                 with col_act:
                     if st.button("Delete Reference", key=f"del_sample_{s_idx}"):
-                        updated_samples = [s for s in samples if s.get("id") != sample.get("id")]
+                        updated_samples = [s for s in samples if s.get("id"] != sample.get("id")]
                         save_species_samples_table(updated_samples)
                         st.success("Reference sample removed!")
                         st.rerun()
