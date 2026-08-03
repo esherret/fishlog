@@ -471,7 +471,11 @@ admin_tab2 = tabs[5] if (is_truly_admin and not is_impersonating) and len(tabs) 
 def process_image_orientation(image_file, rotation_angle=0):
     try:
         image = Image.open(image_file)
-        image = ImageOps.exif_transpose(image)
+        # Ensure default portrait orientation if height is less than width and no explicit rotation requested
+        if image.height < image.width and rotation_angle == 0:
+            image = image.rotate(90, expand=True)
+        else:
+            image = ImageOps.exif_transpose(image)
     except Exception:
         image = Image.open(image_file)
     if image.mode in ("RGBA", "P"):
@@ -652,12 +656,10 @@ with tab1:
                         st.error("Please enter a lure name.")
             selected_lure = "None"
 
-        # 4. Image next
-        st.image(catch_image_file, caption="Uploaded Photo", width=350)
-
-        # Rotate Image option placed directly below the image
+        # 4. Image next, with rotation option directly below it updating instantly
         rotation = st.selectbox("Rotate Image", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key=f"rot_sel_{v}")
         processed_image = process_image_orientation(catch_image_file, rotation)
+        st.image(processed_image, caption="Processed Photo", width=350)
 
         # 5. Date and Time next
         col_dt1, col_dt2 = st.columns(2)
