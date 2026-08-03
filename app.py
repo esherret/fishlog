@@ -1019,7 +1019,7 @@ with tab4:
                     with st.container():
                         st.write(f"**Editing Catch ID:** {row.get('id')[:6]}")
                         
-                        # Species Dropdown & Quick Add in Edit Panel (Fixed line 981 syntax error)
+                        # Species Dropdown & Quick Add in Edit Panel
                         known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")] + [c.get("species") for c in catches if c.get("species")])))
                         if not known_species:
                             known_species = ["Snook", "Redfish", "Trout", "Tarpon", "Bass", "Flounder"]
@@ -1272,7 +1272,7 @@ if recognition_tab:
                     st.write(f"**Sample ID:** {sample.get('id')[:6]}")
                 with col_act:
                     if st.button("Delete Reference", key=f"del_sample_{s_idx}"):
-                        updated_samples = [s for s in samples if s.get("id"] != sample.get("id")]
+                        updated_samples = [s for s in samples if s.get("id") != sample.get("id")]
                         save_species_samples_table(updated_samples)
                         st.success("Reference sample removed!")
                         st.rerun()
