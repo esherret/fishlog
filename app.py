@@ -172,6 +172,9 @@ def admin_delete_user(user_id):
 if "current_user" not in st.session_state:
     st.session_state.current_user = None
 
+if "real_admin_user" not in st.session_state:
+    st.session_state.real_admin_user = None
+
 cookie_user_id = controller.get("fishlog_user_id")
 if cookie_user_id and not st.session_state.current_user:
     client = get_supabase_client()
@@ -180,6 +183,8 @@ if cookie_user_id and not st.session_state.current_user:
             res = client.table("users").select("*").eq("id", cookie_user_id).execute()
             if res.data:
                 st.session_state.current_user = res.data[0]
+                if res.data[0].get("is_admin"):
+                    st.session_state.real_admin_user = res.data[0]
         except Exception:
             pass
 
@@ -283,6 +288,8 @@ if not st.session_state.current_user:
                 user = authenticate_user(login_email, login_password)
                 if user:
                     st.session_state.current_user = user
+                    if user.get("is_admin"):
+                        st.session_state.real_admin_user = user
                     if remember_me:
                         controller.set("fishlog_user_id", user["id"], max_age=31536000)
                     st.success(f"Welcome back, {user['first_name']}!")
@@ -319,10 +326,20 @@ if not st.session_state.current_user:
 # --- LOGGED IN USER APP INTERFACE ---
 user = st.session_state.current_user
 
+# Check if an admin is currently impersonating someone
+real_admin = st.session_state.get("real_admin_user")
+if real_admin and real_admin.get("id") != user.get("id"):
+    st.sidebar.warning(f"⚠️ **IMPERSONATING:** {user['first_name']} {user['last_name']}")
+    if st.sidebar.button("🛑 Stop Impersonating (Return to Admin)"):
+        st.session_state.current_user = real_admin
+        st.rerun()
+    st.sidebar.divider()
+
 st.sidebar.write(f"👤 **Logged in as:** {user['first_name']} {user['last_name']}")
 if st.sidebar.button("🚪 Sign Out"):
     controller.set("fishlog_user_id", "", max_age=0)
     st.session_state.current_user = None
+    st.session_state.real_admin_user = None
     st.rerun()
 
 # --- HANDLE CLEAR FILTERS CALLBACK ---
@@ -435,15 +452,18 @@ def get_filtered_catches_df():
 
 
 # Build navigation tabs dynamically in the requested order
+# Note: Real admin checks use real_admin_user or current_user if admin
+effective_is_admin = (real_admin is not None) or user.get("is_admin")
+
 tab_names = ["🎣 Log a Catch", "📋 Catch Log", "🗺️ Catch Map", "🧩 Manage Lures"]
-if user.get("is_admin"):
+if effective_is_admin:
     tab_names.append("🛡️ User Management")
     tab_names.append("🧬 Fish Recognition Library")
 
 tabs = st.tabs(tab_names)
 tab1, tab2, tab3, tab4 = tabs[0], tabs[1], tabs[2], tabs[3]
-admin_tab1 = tabs[4] if user.get("is_admin") and len(tabs) > 4 else None
-admin_tab2 = tabs[5] if user.get("is_admin") and len(tabs) > 5 else None
+admin_tab1 = tabs[4] if effective_is_admin and len(tabs) > 4 else None
+admin_tab2 = tabs[5] if effective_is_admin and len(tabs) > 5 else None
 
 
 # Helper functions for app processing
@@ -1137,11 +1157,11 @@ with tab4:
         st.info("No lures added yet.")
 
 
-# --- ADMIN TAB 1: USER MANAGEMENT CONSOLE ---
+# --- ADMIN TAB 1: USER MANAGEMENT CONSOLE & IMPERSONATION ---
 if admin_tab1:
     with admin_tab1:
         st.header("🛡️ User Management Console")
-        st.write("Manage registered user accounts, permissions, and records.")
+        st.write("Manage registered user accounts, permissions, and impersonate users.")
         
         all_users = get_all_users()
         if all_users:
@@ -1150,6 +1170,12 @@ if admin_tab1:
                 u_name = f"{u['first_name']} {u['last_name']} ({u['email']})"
                 
                 with st.expander(f"👤 {u_name} {'[ADMIN]' if u['is_admin'] else ''}"):
+                    # Impersonation button row
+                    if st.button(f"🕵️ Impersonate {u['first_name']}", key=f"impersonate_{u_id}"):
+                        st.session_state.current_user = u
+                        st.success(f"Now impersonating {u['first_name']} {u['last_name']}! Switch to any tab to view their data.")
+                        st.rerun()
+
                     with st.form(key=f"edit_user_form_{u_id}"):
                         col1, col2 = st.columns(2)
                         with col1:
@@ -1176,7 +1202,8 @@ if admin_tab1:
                                 st.error(f"Error: {msg}")
 
                         if submit_delete:
-                            if u_id == user["id"]:
+                            real_admin_obj = st.session_state.get("real_admin_user")
+                            if real_admin_obj and u_id == real_admin_obj["id"]:
                                 st.error("You cannot delete your own active admin account while logged in.")
                             else:
                                 success, msg = admin_delete_user(u_id)
