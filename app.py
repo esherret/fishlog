@@ -11,6 +11,9 @@ import folium
 from supabase import create_client, Client
 from PIL import Image, ImageOps
 from streamlit_cookies_controller import CookieController
+import cv2
+import numpy as np
+from skimage.metrics import structural_similarity as ssim
 
 # Configure page
 st.set_page_config(page_title="Fish Catch Log", page_icon="🎣", layout="wide")
@@ -451,7 +454,7 @@ def get_filtered_catches_df():
     return filtered_df
 
 
-# Build navigation tabs dynamically based strictly on true admin status and non-impersonation
+# Build navigation tabs dynamically
 is_truly_admin = real_admin is not None and real_admin.get("is_admin", False)
 is_impersonating = real_admin is not None and user.get("id") != real_admin.get("id")
 
@@ -568,68 +571,97 @@ def get_moon_phase(dt):
     else: return "Waning Crescent"
 
 
-def recognize_fish_and_lure(image_file, lures):
+# --- ADVANCED FREE COMPUTER VISION & PATTERN RECOGNITION ENGINE ---
+def recognize_fish_and_lure(processed_img_pil, lures):
+    """
+    Combines OpenCV Color Histograms + scikit-image Structural Similarity (SSIM) 
+    against the species_samples table, backed by historical frequency weighting.
+    """
     try:
-        img = Image.open(image_file).convert('RGB')
-        img_resized = img.resize((50, 50))
-        pixels = list(img_resized.getdata())
-        w, h = img_resized.size
-        zones = [
-            [pixels[y * w + x] for y in range(0, h//2) for x in range(0, w//2)],
-            [pixels[y * w + x] for y in range(0, h//2) for x in range(w//2, w)],
-            [pixels[y * w + x] for y in range(h//2, h) for x in range(0, w//2)],
-            [pixels[y * w + x] for y in range(h//2, h) for x in range(w//2, w)],
-        ]
-        zone_avgs = []
-        for zone in zones:
-            if zone:
-                r = sum(p[0] for p in zone) / len(zone)
-                g = sum(p[1] for p in zone) / len(zone)
-                b = sum(p[2] for p in zone) / len(zone)
-                zone_avgs.extend([r, g, b])
-            else:
-                zone_avgs.extend([0, 0, 0])
+        # Convert PIL image to OpenCV BGR and Grayscale formats
+        img_np = np.array(processed_img_pil)
+        bgr_img = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+        gray_query = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+        gray_query_resized = cv2.resize(gray_query, (200, 200))
+
+        # Compute Color Histogram for query image (HSV color space for lighting robustness)
+        hsv_query = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2HSV)
+        hist_query = cv2.calcHist([hsv_query], [0, 1], None, [50, 60], [0, 180, 0, 256])
+        cv2.normalize(hist_query, hist_query, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
 
         samples = load_species_samples()
+        species_scores = {}
+
         if samples:
-            best_match = None
-            min_diff = float('inf')
             for sample in samples:
                 sample_path = sample.get("image_path")
+                species_name = sample.get("species")
+                if not species_name:
+                    continue
+
                 if sample_path and os.path.exists(sample_path):
                     try:
-                        s_img = Image.open(sample_path).convert('RGB').resize((50, 50))
-                        s_pixels = list(s_img.getdata())
-                        s_w, s_h = s_img.size
-                        s_zones = [
-                            [s_pixels[y * s_w + x] for y in range(0, s_h//2) for x in range(0, s_w//2)],
-                            [s_pixels[y * s_w + x] for y in range(0, s_h//2) for x in range(s_w//2, s_w)],
-                            [s_pixels[y * s_w + x] for y in range(s_h//2, s_h) for x in range(0, s_w//2)],
-                            [s_pixels[y * s_w + x] for y in range(s_h//2, s_h) for x in range(s_w//2, s_w)],
-                        ]
-                        s_zone_avgs = []
-                        for s_zone in s_zones:
-                            if s_zone:
-                                sr = sum(p[0] for p in s_zone) / len(s_zone)
-                                sg = sum(p[1] for p in s_zone) / len(s_zone)
-                                sb = sum(p[2] for p in s_zone) / len(s_zone)
-                                s_zone_avgs.extend([sr, sg, sb])
-                            else:
-                                s_zone_avgs.extend([0, 0, 0])
+                        s_bgr = cv2.imread(sample_path)
+                        if s_bgr is None:
+                            continue
+                        s_gray = cv2.cvtColor(s_bgr, cv2.COLOR_BGR2GRAY)
+                        s_gray_resized = cv2.resize(s_gray, (200, 200))
 
-                        diff = sum(abs(a - b) for a, b in zip(zone_avgs, s_zone_avgs))
-                        if diff < min_diff:
-                            min_diff = diff
-                            best_match = sample.get("species")
+                        # 1. Structural Similarity Index (SSIM) score [0 to 1]
+                        score_ssim, _ = ssim(gray_query_resized, s_gray_resized, full=True)
+
+                        # 2. Color Histogram Correlation score [-1 to 1, normalized to 0 to 1]
+                        s_hsv = cv2.cvtColor(s_bgr, cv2.COLOR_BGR2HSV)
+                        hist_sample = cv2.calcHist([s_hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
+                        cv2.normalize(hist_sample, hist_sample, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+                        score_hist = cv2.compareHist(hist_query, hist_sample, cv2.HISTCMP_CORREL)
+                        score_hist = max(0.0, score_hist) # clamp negative correlations
+
+                        # Combined match score (70% structural shape, 30% color profile)
+                        combined_score = (0.7 * score_ssim) + (0.3 * score_hist)
+
+                        if species_name not in species_scores or combined_score > species_scores[species_name]:
+                            species_scores[species_name] = combined_score
                     except Exception:
                         continue
-            detected_species = best_match if best_match else "Snook"
-        else:
-            detected_species = "Snook"
+
+        # Fallback / Default if no samples match well
+        detected_species = max(species_scores, key=species_scores.get) if species_scores else "Snook"
+        
+        # Apply Historical Context Weighting (Boost species frequently caught by this user)
+        user_catches = load_catches()
+        if user_catches:
+            species_counts = {}
+            for c in user_catches:
+                sp = c.get("species")
+                species_counts[sp] = species_counts.get(sp, 0) + 1
+            
+            # If a species has high historical frequency, give it a slight confidence bump
+            if species_counts:
+                top_historical_species = max(species_counts, key=species_counts.get)
+                if species_counts[top_historical_species] >= 3 and top_historical_species in species_scores:
+                    if species_scores[top_historical_species] > 0.4: # Only if visual match is reasonable
+                        detected_species = top_historical_species
+
     except Exception:
         detected_species = "Snook"
 
-    detected_lure = lures[0]["name"] if lures else None
+    # Smart Lure Prediction using Historical Frequency
+    detected_lure = None
+    if lures and user_catches:
+        lure_counts = {}
+        for c in user_catches:
+            if c.get("species", "").lower() == detected_species.lower():
+                l = c.get("lure")
+                if l and l != "None":
+                    lure_counts[l] = lure_counts.get(l, 0) + 1
+        if lure_counts:
+            detected_lure = max(lure_counts, key=lure_counts.get)
+        else:
+            detected_lure = lures[0]["name"]
+    elif lures:
+        detected_lure = lures[0]["name"]
+
     return detected_species, detected_lure
 
 
@@ -679,7 +711,7 @@ with tab1:
         st.info(f"🌤️ **Weather:** {weather_desc} | 💨 **Wind:** {wind_speed} {wind_dir} | 🌊 **Tide:** {get_tide_info(manual_lat, manual_lon, combined_dt)} | 🌙 **Moon:** {get_moon_phase(combined_dt)}")
 
         lures = load_lures()
-        rec_species, rec_lure = recognize_fish_and_lure(catch_image_file, lures)
+        rec_species, rec_lure = recognize_fish_and_lure(processed_image, lures)
 
         samples = load_species_samples()
         known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")])))
@@ -702,10 +734,15 @@ with tab1:
         selected_len_str = st.selectbox("Length (Inches)", length_options, index=default_len_idx, key=f"c_len_{v}")
         length = float(selected_len_str)
         
-        # Lure Selection Dropdown + Quick Add Option
+        # Lure Selection Dropdown + Quick Add Option (Prefilled with AI/History prediction)
         lure_names = [l["name"] for l in lures] if lures else []
         lure_options = lure_names + ["➕ Add New Lure..."]
-        selected_lure_choice = st.selectbox("Lure Used", lure_options, key=f"c_lure_sb_{v}")
+        
+        default_lure_idx = 0
+        if rec_lure and rec_lure in lure_names:
+            default_lure_idx = lure_names.index(rec_lure)
+
+        selected_lure_choice = st.selectbox("Lure Used", lure_options, index=default_lure_idx, key=f"c_lure_sb_{v}")
         
         selected_lure = selected_lure_choice
         if selected_lure_choice == "➕ Add New Lure...":
@@ -868,7 +905,7 @@ with tab2:
                     save_all_catches_raw(all_raw)
 
                     samples = load_species_samples()
-                    updated_samples = [s for s in samples if s.get("catch_id") not in deleted_ids]
+                    updated_samples = [s for s in samples if s.get("catch_id"] not in deleted_ids]
                     save_species_samples_table(updated_samples)
 
                     st.success(f"Successfully moved {len(selected_rows)} selected catch(es) to Recycle Bin!")
