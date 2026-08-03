@@ -11,6 +11,9 @@ import folium
 from supabase import create_client, Client
 from PIL import Image, ImageOps
 from streamlit_cookies_controller import CookieController
+import streamlit.components.v1 as components
+import base64
+import io
 import numpy as np
 
 # Configure page
@@ -588,7 +591,7 @@ def get_moon_phase(dt):
     else: return "Waning Crescent"
 
 
-# --- TAB 1: LOG A CATCH (PICK FROM BUTTONS WIZARD WITH RELIABLE FILE UPLOADER) ---
+# --- TAB 1: LOG A CATCH (PICK FROM BUTTONS WIZARD WITH INSTANT CLIENT-SIDE COMPRESSION & AUTO-ADVANCE) ---
 with tab1:
     st.header("Log a Catch (Pick From Buttons)")
 
@@ -598,24 +601,85 @@ with tab1:
 
     step = st.session_state.catch_wizard_step
 
-    # --- STEP 1: UPLOAD IMAGE & ADVANCE ---
+    # --- STEP 1: CLIENT-SIDE COMPRESSED UPLOAD & IMMEDIATE STEP 2 ADVANCE ---
     if step == 1:
         st.subheader("Step 1: Take a Photo or Upload a File")
         
-        # Using Streamlit's built-in robust file uploader which guarantees immediate python state handling and clean mobile file-picker dialog
-        catch_image_file = st.file_uploader("Take Photo or Upload File", type=["jpg", "jpeg", "png"], key="wiz_file_input")
-
-        if catch_image_file:
-            processed_image = process_image_orientation(catch_image_file, 0)
-            dt, lat, lon = extract_exif(catch_image_file)
+        compressed_file_data = components.html("""
+        <div style="font-family: sans-serif; padding: 15px; text-align: center; background: #fff;">
+            <input type="file" id="imageInput" accept="image/*" style="display:none;" onchange="compressImage(event)">
+            <label for="imageInput" style="cursor: pointer; background: #ff4b4b; color: white; padding: 14px 28px; border-radius: 6px; font-size: 16px; font-weight: bold; display: inline-block; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                📁 Take Photo or Upload File
+            </label>
+            <p id="status" style="margin-top: 12px; font-size: 14px; color: #444; font-weight: 500;">Tap above to take a photo or select a file</p>
+        </div>
+        <script>
+        function compressImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            document.getElementById('status').innerText = "Processing instantly...";
             
-            st.session_state.wizard_data["processed_image"] = processed_image
-            st.session_state.wizard_data["datetime"] = dt if dt else datetime.now()
-            st.session_state.wizard_data["latitude"] = lat if lat is not None else 28.39
-            st.session_state.wizard_data["longitude"] = lon if lon is not None else -80.60
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = function(e) {
+                const img = new Image();
+                img.src = e.target.result;
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 800;
+                    const MAX_HEIGHT = 800;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                    document.getElementById('status').innerText = "Done! Moving to next step...";
+                    
+                    // Transmit compressed data back to Streamlit and force script rerun
+                    window.parent.postMessage({type: 'streamlit:setComponentValue', value: dataUrl}, '*');
+                }
+            }
+        }
+        </script>
+        """, height=220)
 
-            st.session_state.catch_wizard_step = 2
-            st.rerun()
+        if compressed_file_data:
+            try:
+                header, encoded = compressed_file_data.split(",", 1)
+                img_bytes = base64.b64decode(encoded)
+                img_io = io.BytesIO(img_bytes)
+                
+                processed_image = Image.open(img_io)
+                if processed_image.mode in ("RGBA", "P"):
+                    processed_image = processed_image.convert("RGB")
+
+                st.session_state.wizard_data["processed_image"] = processed_image
+                st.session_state.wizard_data["rotation"] = 0
+                st.session_state.wizard_data["datetime"] = datetime.now()
+                st.session_state.wizard_data["latitude"] = 28.39
+                st.session_state.wizard_data["longitude"] = -80.60
+
+                # Automatically advance to Step 2 instantly without any user clicks
+                st.session_state.catch_wizard_step = 2
+                st.rerun()
+            except Exception:
+                pass
 
     # --- STEP 2: PICK FISH TYPE (GRID OF BUTTONS) ---
     elif step == 2:
@@ -729,8 +793,8 @@ with tab1:
             if st.button("➕ Add Lure & Select"):
                 if new_l_name:
                     l_img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
-                    if new_lure_img := new_l_img:
-                        process_image_orientation(new_lure_img).save(l_img_path, optimize=True, quality=80)
+                    if new_l_img:
+                        process_image_orientation(new_l_img).save(l_img_path, optimize=True, quality=80)
                     else:
                         l_img_path = ""
                     
@@ -1188,6 +1252,8 @@ if admin_tab1:
                         if submit_delete:
                             real_admin_obj = st.session_state.get("real_admin_user")
                             if real_admin_obj and u_id == real_admin_obj["id"]:
+            real_admin_obj = st.session_state.get("real_admin_user")
+            if real_admin_obj and u_id == real_admin_obj["id"]:
                                 st.error("You cannot delete your own active admin account while logged in.")
                             else:
                                 success, msg = admin_delete_user(u_id)
