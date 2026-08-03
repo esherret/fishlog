@@ -654,13 +654,12 @@ with tab1:
                     document.getElementById('preview').style.display = 'block';
                     document.getElementById('status').innerText = "Done! Advancing...";
                     
-                    // Directly push value back to Streamlit
                     window.parent.postMessage({type: 'streamlit:setComponentValue', value: dataUrl}, '*');
                 }
             }
         }
         </script>
-        """, height=320)
+        """, height=340)
 
         if compressed_file_data:
             try:
@@ -678,13 +677,11 @@ with tab1:
                 st.session_state.wizard_data["latitude"] = 28.39
                 st.session_state.wizard_data["longitude"] = -80.60
 
-                # Automatically advance to Step 2 instantly upon data receipt
                 st.session_state.catch_wizard_step = 2
                 st.rerun()
             except Exception:
                 pass
 
-        # Prominent fallback button so user can advance immediately if needed
         if "processed_image" in st.session_state.wizard_data:
             if st.button("➡️ Continue to Fish Type", type="primary"):
                 st.session_state.catch_wizard_step = 2
@@ -1176,7 +1173,7 @@ with tab2:
                             if st.button("Save Changes", type="primary", key=f"save_edit_btn_{row.get('id')}"):
                                 all_c = load_all_catches_raw()
                                 for c in all_c:
-                                    if c.get("id") == row.get("id"):
+                                    if c.get("id"] == row.get("id"):
                                         c["species"] = new_species
                                         c["length"] = new_length
                                         c["lure"] = new_lure
@@ -1221,7 +1218,7 @@ with tab3:
     catches = load_catches()
     if catches:
         filtered_df = get_filtered_catches_df()
-        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude"] is not None and r.get("longitude") is not None]
+        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
         if valid:
             m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11, tiles="Esri.WorldImagery", attribution_control=False)
             fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
