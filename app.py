@@ -352,7 +352,7 @@ user = st.session_state.current_user
 real_admin = st.session_state.get("real_admin_user")
 
 # Check if an admin is currently impersonating someone
-if real_admin and real_admin.get("id"] != user.get("id"):
+if real_admin and real_admin.get("id") != user.get("id"):
     st.sidebar.warning(f"⚠️ **IMPERSONATING:** {user['first_name']} {user['last_name']}")
     if st.sidebar.button("🛑 Stop Impersonating (Return to Admin)"):
         st.session_state.current_user = real_admin
@@ -606,13 +606,13 @@ with tab1:
         st.subheader("Step 1: Take a Photo or Upload a File")
         
         compressed_file_data = components.html("""
-        <div style="font-family: sans-serif; padding: 15px; text-align: center; background: #fff;">
+        <div style="font-family: sans-serif; padding: 10px; text-align: center; background: #fff;">
             <input type="file" id="imageInput" accept="image/*" style="display:none;" onchange="compressImage(event)">
             <label for="imageInput" style="cursor: pointer; background: #ff4b4b; color: white; padding: 12px 24px; border-radius: 6px; font-size: 16px; font-weight: bold; display: inline-block;">
                 📁 Take Photo or Upload File
             </label>
-            <p id="status" style="margin-top: 12px; font-size: 14px; color: #444; font-weight: 500;">Tap above to take a photo or select a file from your device</p>
-            <img id="preview" style="max-width: 100%; max-height: 220px; display: none; margin: 10px auto; border-radius: 6px;" />
+            <p id="status" style="margin-top: 10px; font-size: 14px; color: #444; font-weight: 500;">Tap above to take a photo or select a file from your device</p>
+            <img id="preview" style="max-width: 100%; max-height: 180px; display: none; margin: 5px auto; border-radius: 6px;" />
         </div>
         <script>
         function compressImage(event) {
@@ -659,7 +659,7 @@ with tab1:
             }
         }
         </script>
-        """, height=350)
+        """, height=280)
 
         if compressed_file_data:
             try:
@@ -800,7 +800,7 @@ with tab1:
                         l_img_path = ""
                     
                     updated_lures = load_lures()
-                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_lure_name, "image_path": l_img_path})
+                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_l_name, "image_path": l_img_path})
                     save_lures(updated_lures)
                     st.session_state.wizard_data["lure"] = new_lure_name
                     st.session_state.catch_wizard_step = 5
@@ -1007,7 +1007,7 @@ with tab2:
                     save_all_catches_raw(all_raw)
 
                     samples = load_species_samples()
-                    updated_samples = [s for s in samples if s.get("catch_id"] not in deleted_ids]
+                    updated_samples = [s for s in samples if s.get("catch_id") not in deleted_ids]
                     save_species_samples_table(updated_samples)
 
                     st.success(f"Successfully moved {len(selected_rows)} selected catch(es) to Recycle Bin!")
@@ -1365,7 +1365,7 @@ if admin_tab2:
                     process_image_orientation(new_sample_file).save(img_path, optimize=True, quality=80)
                     
                     samples = load_species_samples()
-                    samples.append({
+                    samples.component.append({
                         "id": str(uuid.uuid4()),
                         "user_id": user["id"],
                         "catch_id": "manual_admin_upload",
