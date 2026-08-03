@@ -583,9 +583,6 @@ with tab1:
         catch_image_file = st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key=f"file_input_widget_{v}")
 
     if catch_image_file:
-        rotation = st.selectbox("Rotate Image", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key=f"rot_sel_{v}")
-        processed_image = process_image_orientation(catch_image_file, rotation)
-
         dt, lat, lon = extract_exif(catch_image_file)
         
         # Hidden coordinate defaults (lat/lon/weather still captured in background data)
@@ -656,7 +653,11 @@ with tab1:
             selected_lure = "None"
 
         # 4. Image next
-        st.image(processed_image, caption="Processed Photo", width=350)
+        st.image(catch_image_file, caption="Uploaded Photo", width=350)
+
+        # Rotate Image option placed directly below the image
+        rotation = st.selectbox("Rotate Image", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key=f"rot_sel_{v}")
+        processed_image = process_image_orientation(catch_image_file, rotation)
 
         # 5. Date and Time next
         col_dt1, col_dt2 = st.columns(2)
