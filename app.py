@@ -605,21 +605,20 @@ with tab1:
     if step == 1:
         st.subheader("Step 1: Take a Photo or Upload a File")
         
-        # Fully autonomous HTML5 Canvas compression component with automatic navigation
         compressed_file_data = components.html("""
         <div style="font-family: sans-serif; padding: 15px; border: 2px dashed #ff4b4b; border-radius: 8px; text-align: center; background: #fff;">
-            <input type="file" id="imageInput" accept="image/*" capture="environment" style="display:none;" onchange="compressImage(event)">
+            <input type="file" id="imageInput" accept="image/*" style="display:none;" onchange="compressImage(event)">
             <label for="imageInput" style="cursor: pointer; background: #ff4b4b; color: white; padding: 12px 24px; border-radius: 6px; font-size: 16px; font-weight: bold; display: inline-block;">
-                📸 Take Photo or Upload File
+                📁 Take Photo or Upload File
             </label>
-            <p id="status" style="margin-top: 12px; font-size: 14px; color: #444; font-weight: 500;">Tap above to instantly select or take photo</p>
+            <p id="status" style="margin-top: 12px; font-size: 14px; color: #444; font-weight: 500;">Tap above to take a photo or select a file from your device</p>
             <img id="preview" style="max-width: 100%; max-height: 220px; display: none; margin: 10px auto; border-radius: 6px;" />
         </div>
         <script>
         function compressImage(event) {
             const file = event.target.files[0];
             if (!file) return;
-            document.getElementById('status.innerText = "Processing instantly...";
+            document.getElementById('status').innerText = "Processing instantly...";
             
             const reader = new FileReader();
             reader.readAsDataURL(file);
@@ -1136,7 +1135,7 @@ with tab2:
                         lure_names = sorted(list(set([l["name"] for l in lures_list]))) if lures_list else []
                         lure_options = lure_names + ["➕ Add New Lure..."]
                         curr_lure = row.get("lure", "")
-                        d_idx = lure_options.index(curr_lure) if curr_lure in lure_options else 0
+                        d_idx = lure_options.index(curr_lure) if lure_options in lure_options else 0
                         
                         selected_lure_choice = st.selectbox("Lure Used", lure_options, index=d_idx, key=f"edit_lure_sb_{row.get('id')}")
                         
