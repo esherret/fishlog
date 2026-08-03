@@ -609,13 +609,11 @@ with tab1:
             catch_image_file = st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key="wiz_file_input")
 
         if catch_image_file:
-            rotation = st.selectbox("Rotate Image", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key="wiz_rot")
-            processed_image = process_image_orientation(catch_image_file, rotation)
-            st.image(processed_image, caption="Processed Photo", width=350)
-
+            # Instantly store raw file bytes into session state to eliminate upload lag
+            st.session_state.wizard_data["raw_image_file"] = catch_image_file
+            st.session_state.wizard_data["rotation"] = 0
+            
             dt, lat, lon = extract_exif(catch_image_file)
-            st.session_state.wizard_data["image_file"] = catch_image_file
-            st.session_state.wizard_data["processed_image"] = processed_image
             st.session_state.wizard_data["datetime"] = dt if dt else datetime.now()
             st.session_state.wizard_data["latitude"] = lat if lat is not None else 28.39
             st.session_state.wizard_data["longitude"] = lon if lon is not None else -80.60
@@ -628,9 +626,20 @@ with tab1:
     elif step == 2:
         st.subheader("Step 2: Select Fish Type")
         
-        # Show picture of the fish being logged
-        if "processed_image" in st.session_state.wizard_data:
-            st.image(st.session_state.wizard_data["processed_image"], caption="Catch Photo", width=250)
+        raw_file = st.session_state.wizard_data.get("raw_image_file")
+        rot_val = st.session_state.wizard_data.get("rotation", 0)
+        
+        if raw_file:
+            # Process orientation instantly for preview
+            processed_image = process_image_orientation(raw_file, rot_val)
+            st.session_state.wizard_data["processed_image"] = processed_image
+            st.image(processed_image, caption="Catch Photo", width=250)
+
+            # Quick rotation option directly below image preview
+            new_rot = st.selectbox("Rotate Image", [0, 90, 180, 270], index=[0, 90, 180, 270].index(rot_val), format_func=lambda x: f"Rotate {x}°", key="wiz_rot_step2")
+            if new_rot != rot_val:
+                st.session_state.wizard_data["rotation"] = new_rot
+                st.rerun()
 
         samples = load_species_samples()
         known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")])))
@@ -809,6 +818,7 @@ with tab1:
         col_fin1, col_fin2, col_fin3 = st.columns(3)
         with col_fin1:
             if st.button("✅ Add to Log", type="primary"):
+                # Heavy background tasks (saving image to disk & syncing with Supabase) execute here instantly upon confirmation
                 img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
                 img_path = os.path.join(CATCHES_DIR, img_filename)
                 wd["processed_image"].save(img_path, optimize=True, quality=80)
