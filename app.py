@@ -899,6 +899,7 @@ with tab4:
             # Sort entries starting with newest and going to oldest based on combined datetime
             sorted_df = filtered_df.sort_values(by="formatted_datetime", ascending=False, key=lambda col: pd.to_datetime(filtered_df["formatted_datetime"], errors="coerce"))
 
+            samples = load_species_samples()
             for idx, row in sorted_df.iterrows():
                 st.markdown('<div class="card-media-block">', unsafe_allow_html=True)
                 
@@ -976,9 +977,8 @@ with tab4:
                     with st.container():
                         st.write(f"**Editing Catch ID:** {row.get('id')[:6]}")
                         
-                        # Species Dropdown & Quick Add in Edit Panel
-                        samples = load_species_samples()
-                        known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")] + [c.get("species"] for c in catches if c.get("species")])))
+                        # Species Dropdown & Quick Add in Edit Panel (Fixed line 981 syntax error)
+                        known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")] + [c.get("species") for c in catches if c.get("species")])))
                         if not known_species:
                             known_species = ["Snook", "Redfish", "Trout", "Tarpon", "Bass", "Flounder"]
                         curr_species = row.get("species", "")
