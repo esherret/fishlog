@@ -1,5 +1,6 @@
 import os
 import uuid
+import re
 import bcrypt
 from datetime import datetime, time
 import pandas as pd
@@ -327,6 +328,27 @@ if st.sidebar.button("🚪 Sign Out"):
 # --- CENTRALIZED SIDEBAR FILTERS (RENDERED ONCE) ---
 st.sidebar.header("Filter Log Entries")
 all_catches_for_filter = load_catches()
+
+# Wind direction windows definition
+wind_dir_windows = [
+    ("N / NNE / NE", ["N", "NNE", "NE"]),
+    ("NNE / NE / ENE", ["NNE", "NE", "ENE"]),
+    ("NE / ENE / E", ["NE", "ENE", "E"]),
+    ("ENE / E / ESE", ["ENE", "E", "ESE"]),
+    ("E / ESE / SE", ["E", "ESE", "SE"]),
+    ("ESE / SE / SSE", ["ESE", "SE", "SSE"]),
+    ("SE / SSE / S", ["SE", "SSE", "S"]),
+    ("SSE / S / SSW", ["SSE", "S", "SSW"]),
+    ("S / SSW / SW", ["S", "SSW", "SW"]),
+    ("SSW / SW / WSW", ["SSW", "SW", "WSW"]),
+    ("SW / WSW / W", ["SW", "WSW", "W"]),
+    ("WSW / W / WNW", ["WSW", "W", "WNW"]),
+    ("W / WNW / NW", ["W", "WNW", "NW"]),
+    ("WNW / NW / NNW", ["WNW", "NW", "NNW"]),
+    ("NW / NNW / N", ["NW", "NNW", "N"]),
+    ("NNW / N / NNE", ["NNW", "N", "NNE"])
+]
+
 if all_catches_for_filter:
     df_filter = pd.DataFrame(all_catches_for_filter)
     if "length" in df_filter.columns:
@@ -342,11 +364,11 @@ if all_catches_for_filter:
     tide_list = ["All"] + sorted(list(df_filter["tide"].dropna().unique())) if "tide" in df_filter.columns else ["All"]
     selected_tide = st.sidebar.selectbox("Tide", tide_list, key="sb_tide")
 
-    wind_speed_list = ["All"] + sorted(list(df_filter["wind_speed"].dropna().unique())) if "wind_speed" in df_filter.columns else ["All"]
-    selected_wind_speed = st.sidebar.selectbox("Wind Speed", wind_speed_list, key="sb_wind_speed")
+    min_wind_speed_options = ["All", "0+ mph", "5+ mph", "10+ mph", "15+ mph", "20+ mph"]
+    selected_min_wind_speed = st.sidebar.selectbox("Minimum Wind Speed", min_wind_speed_options, key="sb_min_wind_speed")
 
-    wind_dir_list = ["All"] + sorted(list(df_filter["wind_direction"].dropna().unique())) if "wind_direction" in df_filter.columns else ["All"]
-    selected_wind_dir = st.sidebar.selectbox("Wind Direction", wind_dir_list, key="sb_wind_dir")
+    wind_dir_options = ["All"] + [w[0] for w in wind_dir_windows]
+    selected_wind_dir_label = st.sidebar.selectbox("Wind Direction", wind_dir_options, key="sb_wind_dir")
 
     lure_list = ["All"] + sorted(list(df_filter["lure"].dropna().unique())) if "lure" in df_filter.columns else ["All"]
     selected_lure = st.sidebar.selectbox("Lure Used", lure_list, key="sb_lure")
@@ -354,9 +376,17 @@ else:
     selected_species = "All"
     min_size = 0.0
     selected_tide = "All"
-    selected_wind_speed = "All"
-    selected_wind_dir = "All"
+    selected_min_wind_speed = "All"
+    selected_wind_dir_label = "All"
     selected_lure = "All"
+
+def parse_wind_speed(val):
+    if not val or val == "N/A":
+        return 0.0
+    nums = re.findall(r'\d+', str(val))
+    if nums:
+        return float(nums[0])
+    return 0.0
 
 def get_filtered_catches_df():
     catches = load_catches()
@@ -376,12 +406,18 @@ def get_filtered_catches_df():
     filtered_df = filtered_df[filtered_df["length"] >= min_size]
     if selected_tide != "All":
         filtered_df = filtered_df[filtered_df["tide"] == selected_tide]
-    if selected_wind_speed != "All":
-        filtered_df = filtered_df[filtered_df["wind_speed"] == selected_wind_speed]
-    if selected_wind_dir != "All":
-        filtered_df = filtered_df[filtered_df["wind_direction"] == selected_wind_dir]
+    
+    if selected_min_wind_speed != "All":
+        threshold = float(selected_min_wind_speed.replace("+ mph", ""))
+        filtered_df = filtered_df[filtered_df["wind_speed"].apply(parse_wind_speed) >= threshold]
+
+    if selected_wind_dir_label != "All":
+        matched_window = next((w[1] for w in wind_dir_windows if w[0] == selected_wind_dir_label), [])
+        filtered_df = filtered_df[filtered_df["wind_direction"].isin(matched_window)]
+
     if selected_lure != "All":
         filtered_df = filtered_df[filtered_df["lure"] == selected_lure]
+        
     return filtered_df
 
 
@@ -942,7 +978,7 @@ with tab4:
                         
                         # Species Dropdown & Quick Add in Edit Panel
                         samples = load_species_samples()
-                        known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")] + [c.get("species") for c in catches if c.get("species")])))
+                        known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")] + [c.get("species"] for c in catches if c.get("species")])))
                         if not known_species:
                             known_species = ["Snook", "Redfish", "Trout", "Tarpon", "Bass", "Flounder"]
                         curr_species = row.get("species", "")
