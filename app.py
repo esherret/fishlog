@@ -603,23 +603,23 @@ with tab1:
 
     # --- STEP 1: UPLOAD IMAGE & INSTANT JUMP ---
     if step == 1:
-        st.subheader("Step 1: Upload Fish Photo")
-        st.write("Select or capture an image. It will instantly compress in your browser for zero-wait loading:")
-
+        st.subheader("Step 1: Take a Photo or Upload a File")
+        
+        # Fully autonomous HTML5 Canvas compression component with automatic navigation
         compressed_file_data = components.html("""
-        <div style="font-family: sans-serif; padding: 10px; border: 2px dashed #ccc; border-radius: 8px; text-align: center; background: #fafafa;">
-            <input type="file" id="imageInput" accept="image/*" style="display:none;" onchange="compressImage(event)">
-            <label for="imageInput" style="cursor: pointer; background: #ff4b4b; color: white; padding: 10px 20px; border-radius: 6px; font-weight: bold; display: inline-block;">
-                📁 Choose or Take Photo (Instant)
+        <div style="font-family: sans-serif; padding: 15px; border: 2px dashed #ff4b4b; border-radius: 8px; text-align: center; background: #fff;">
+            <input type="file" id="imageInput" accept="image/*" capture="environment" style="display:none;" onchange="compressImage(event)">
+            <label for="imageInput" style="cursor: pointer; background: #ff4b4b; color: white; padding: 12px 24px; border-radius: 6px; font-size: 16px; font-weight: bold; display: inline-block;">
+                📸 Take Photo or Upload File
             </label>
-            <p id="status" style="margin-top: 10px; font-size: 14px; color: #666;">No file chosen</p>
-            <img id="preview" style="max-width: 100%; max-height: 200px; display: none; margin: 10px auto; border-radius: 6px;" />
+            <p id="status" style="margin-top: 12px; font-size: 14px; color: #444; font-weight: 500;">Tap above to instantly select or take photo</p>
+            <img id="preview" style="max-width: 100%; max-height: 220px; display: none; margin: 10px auto; border-radius: 6px;" />
         </div>
         <script>
         function compressImage(event) {
             const file = event.target.files[0];
             if (!file) return;
-            document.getElementById('status').innerText = "Compressing instantly...";
+            document.getElementById('status.innerText = "Processing instantly...";
             
             const reader = new FileReader();
             reader.readAsDataURL(file);
@@ -650,17 +650,17 @@ with tab1:
                     const ctx = canvas.getContext('2d');
                     ctx.drawImage(img, 0, 0, width, height);
                     
-                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
                     document.getElementById('preview').src = dataUrl;
                     document.getElementById('preview').style.display = 'block';
-                    document.getElementById('status').innerText = "Ready! Click below to proceed.";
+                    document.getElementById('status').innerText = "Done! Loading next step...";
                     
                     window.parent.postMessage({type: 'streamlit:setComponentValue', value: dataUrl}, '*');
                 }
             }
         }
         </script>
-        """, height=280)
+        """, height=300)
 
         if compressed_file_data:
             try:
@@ -682,20 +682,6 @@ with tab1:
                 st.rerun()
             except Exception:
                 pass
-
-        st.divider()
-        st.write("Or use standard uploader:")
-        standard_file = st.file_uploader("Standard Upload", type=["jpg", "jpeg", "png"], key="std_fallback_uploader")
-        if standard_file:
-            processed_image = process_image_orientation(standard_file, 0)
-            dt, lat, lon = extract_exif(standard_file)
-            st.session_state.wizard_data["processed_image"] = processed_image
-            st.session_state.wizard_data["rotation"] = 0
-            st.session_state.wizard_data["datetime"] = dt if dt else datetime.now()
-            st.session_state.wizard_data["latitude"] = lat if lat is not None else 28.39
-            st.session_state.wizard_data["longitude"] = lon if lon is not None else -80.60
-            st.session_state.catch_wizard_step = 2
-            st.rerun()
 
     # --- STEP 2: PICK FISH TYPE (GRID OF BUTTONS) ---
     elif step == 2:
@@ -1388,7 +1374,7 @@ if admin_tab2:
                         "image_path": img_path
                     })
                     save_species_samples_table(samples)
-                    st.success("Reference sample added successfully!")
+                    st.success("New reference sample added successfully!")
                     st.rerun()
                 else:
                     st.error("Please provide both a species name and an image file.")
