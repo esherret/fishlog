@@ -434,18 +434,16 @@ def get_filtered_catches_df():
     return filtered_df
 
 
-# --- MAIN NAVIGATION WITH TOP-LEVEL SELECTBOX / SUB-MENU ---
-main_nav_options = ["🎣 Log a Catch", "📋 Catch Log", "🗺️ Catch Map", "🧩 Manage Lures"]
+# Build navigation tabs dynamically in the requested order
+tab_names = ["🎣 Log a Catch", "📋 Catch Log", "🗺️ Catch Map", "🧩 Manage Lures"]
 if user.get("is_admin"):
-    main_nav_options.append("🛡️ Admin")
+    tab_names.append("🛡️ User Management")
+    tab_names.append("🧬 Fish Recognition Library")
 
-selected_main_nav = st.selectbox("Navigation", main_nav_options, label_visibility="collapsed")
-
-# Handle Admin Sub-menu selection if Admin is chosen
-selected_admin_sub = None
-if selected_main_nav == "🛡️ Admin":
-    admin_sub_options = ["User Management", "Fish Recognition Library"]
-    selected_admin_sub = st.selectbox("Admin Sub-Menu", admin_sub_options, label_visibility="collapsed")
+tabs = st.tabs(tab_names)
+tab1, tab2, tab3, tab4 = tabs[0], tabs[1], tabs[2], tabs[3]
+admin_tab1 = tabs[4] if user.get("is_admin") and len(tabs) > 4 else None
+admin_tab2 = tabs[5] if user.get("is_admin") and len(tabs) > 5 else None
 
 
 # Helper functions for app processing
@@ -616,7 +614,7 @@ def recognize_fish_and_lure(image_file, lures):
 
 
 # --- TAB 1: LOG A CATCH ---
-if selected_main_nav == "🎣 Log a Catch":
+with tab1:
     st.header("Log a New Catch")
     
     # Use dynamic version suffix to force-clear all input widgets upon submission
@@ -764,7 +762,7 @@ if selected_main_nav == "🎣 Log a Catch":
 
 
 # --- TAB 2: CATCH LOG ---
-elif selected_main_nav == "📋 Catch Log":
+with tab2:
     st.header("Catch Log")
     catches = load_catches()
     if catches:
@@ -1059,7 +1057,7 @@ elif selected_main_nav == "📋 Catch Log":
 
 
 # --- TAB 3: CATCH MAP ---
-elif selected_main_nav == "🗺️ Catch Map":
+with tab3:
     st.header("Catch Location Map")
     catches = load_catches()
     if catches:
@@ -1098,8 +1096,8 @@ elif selected_main_nav == "🗺️ Catch Map":
         st.info("No catches recorded yet.")
 
 
-# --- TAB 4: MANAGE LURES (Accessible to all users) ---
-elif selected_main_nav == "🧩 Manage Lures":
+# --- TAB 4: MANAGE LURES ---
+with tab4:
     st.header("Manage Lures")
     with st.form("lure_form", clear_on_submit=True):
         l_name = st.text_input("New Lure Name")
@@ -1139,9 +1137,9 @@ elif selected_main_nav == "🧩 Manage Lures":
         st.info("No lures added yet.")
 
 
-# --- ADMIN SUB-MENUS ---
-elif selected_main_nav == "🛡️ Admin":
-    if selected_admin_sub == "User Management":
+# --- ADMIN TAB 1: USER MANAGEMENT CONSOLE ---
+if admin_tab1:
+    with admin_tab1:
         st.header("🛡️ User Management Console")
         st.write("Manage registered user accounts, permissions, and records.")
         
@@ -1190,7 +1188,10 @@ elif selected_main_nav == "🛡️ Admin":
         else:
             st.info("No users registered.")
 
-    elif selected_admin_sub == "Fish Recognition Library":
+
+# --- ADMIN TAB 2: FISH RECOGNITION LIBRARY ---
+if admin_tab2:
+    with admin_tab2:
         st.header("🧬 Fish Recognition Accuracy Library")
         st.write("Review, manage, and add reference sample images used by the heuristic model to improve species identification accuracy.")
         
