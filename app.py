@@ -21,32 +21,9 @@ controller = CookieController()
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
-# Custom CSS for custom white pointer slider thumbs, tracks, sidebar filter icon, and responsive media layout
+# Custom CSS for sidebar filter icon, and responsive media layout
 st.markdown("""
 <style>
-    /* Custom white pointer-shaped slider thumbs for mobile and desktop touch accessibility */
-    .stSlider [data-baseweb="slider"] div[role="slider"] {
-        background-color: #ffffff !important;
-        border: 1px solid #888888 !important;
-        width: 32px !important;
-        height: 40px !important;
-        border-radius: 0px !important;
-        clip-path: polygon(50% 0%, 100% 35%, 100% 100%, 0% 100%, 0% 35%) !important;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.3) !important;
-    }
-    .stSlider [data-baseweb="slider"] div > div > div > div {
-        background-color: #000000 !important;
-        height: 8px !important;
-    }
-    @media (max-width: 768px) {
-        .stSlider [data-baseweb="slider"] div[role="slider"] {
-            width: 38px !important;
-            height: 46px !important;
-        }
-        .stSlider [data-baseweb="slider"] div > div > div > div {
-            height: 12px !important;
-        }
-    }
     [data-testid="collapsedControl"] svg {
         visibility: hidden;
     }
@@ -347,6 +324,67 @@ if st.sidebar.button("🚪 Sign Out"):
     st.session_state.current_user = None
     st.rerun()
 
+# --- CENTRALIZED SIDEBAR FILTERS (RENDERED ONCE) ---
+st.sidebar.header("Filter Log Entries")
+all_catches_for_filter = load_catches()
+if all_catches_for_filter:
+    df_filter = pd.DataFrame(all_catches_for_filter)
+    if "length" in df_filter.columns:
+        df_filter["length"] = pd.to_numeric(df_filter["length"], errors="coerce").fillna(0.0)
+    
+    species_list = ["All"] + sorted(list(df_filter["species"].unique())) if "species" in df_filter.columns else ["All"]
+    selected_species = st.sidebar.selectbox("Type of Fish", species_list, key="sb_species")
+    
+    size_options = ["All"] + [f"{x:.1f}" for x in [i * 0.5 for i in range(81)]]
+    selected_min_size_str = st.sidebar.selectbox("Minimum Size (Inches)", size_options, key="sb_min_size")
+    min_size = 0.0 if selected_min_size_str == "All" else float(selected_min_size_str)
+
+    tide_list = ["All"] + sorted(list(df_filter["tide"].dropna().unique())) if "tide" in df_filter.columns else ["All"]
+    selected_tide = st.sidebar.selectbox("Tide", tide_list, key="sb_tide")
+
+    wind_speed_list = ["All"] + sorted(list(df_filter["wind_speed"].dropna().unique())) if "wind_speed" in df_filter.columns else ["All"]
+    selected_wind_speed = st.sidebar.selectbox("Wind Speed", wind_speed_list, key="sb_wind_speed")
+
+    wind_dir_list = ["All"] + sorted(list(df_filter["wind_direction"].dropna().unique())) if "wind_direction" in df_filter.columns else ["All"]
+    selected_wind_dir = st.sidebar.selectbox("Wind Direction", wind_dir_list, key="sb_wind_dir")
+
+    lure_list = ["All"] + sorted(list(df_filter["lure"].dropna().unique())) if "lure" in df_filter.columns else ["All"]
+    selected_lure = st.sidebar.selectbox("Lure Used", lure_list, key="sb_lure")
+else:
+    selected_species = "All"
+    min_size = 0.0
+    selected_tide = "All"
+    selected_wind_speed = "All"
+    selected_wind_dir = "All"
+    selected_lure = "All"
+
+def get_filtered_catches_df():
+    catches = load_catches()
+    if not catches:
+        return pd.DataFrame()
+    df = pd.DataFrame(catches)
+    if "length" in df.columns:
+        df["length"] = pd.to_numeric(df["length"], errors="coerce").fillna(0.0)
+    if "latitude" in df.columns:
+        df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
+    if "longitude" in df.columns:
+        df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
+    
+    filtered_df = df.copy()
+    if selected_species != "All":
+        filtered_df = filtered_df[filtered_df["species"] == selected_species]
+    filtered_df = filtered_df[filtered_df["length"] >= min_size]
+    if selected_tide != "All":
+        filtered_df = filtered_df[filtered_df["tide"] == selected_tide]
+    if selected_wind_speed != "All":
+        filtered_df = filtered_df[filtered_df["wind_speed"] == selected_wind_speed]
+    if selected_wind_dir != "All":
+        filtered_df = filtered_df[filtered_df["wind_direction"] == selected_wind_dir]
+    if selected_lure != "All":
+        filtered_df = filtered_df[filtered_df["lure"] == selected_lure]
+    return filtered_df
+
+
 # Build navigation tabs dynamically based on Admin role
 tab_names = ["🎣 Log a Catch", "🗺️ Catch Map", "🧩 Manage Lures", "📋 Catch Log", "🗑️ Recycle Bin"]
 if user.get("is_admin"):
@@ -526,29 +564,6 @@ def recognize_fish_and_lure(image_file, lures):
     return detected_species, detected_lure
 
 
-def get_filtered_catches_df(catches, prefix="global"):
-    if not catches:
-        return pd.DataFrame()
-    df = pd.DataFrame(catches)
-    if "length" in df.columns:
-        df["length"] = pd.to_numeric(df["length"], errors="coerce").fillna(0.0)
-    if "latitude" in df.columns:
-        df["latitude"] = pd.to_numeric(df["latitude"], errors="coerce")
-    if "longitude" in df.columns:
-        df["longitude"] = pd.to_numeric(df["longitude"], errors="coerce")
-
-    st.sidebar.header("Filter Log Entries")
-    species_list = ["All"] + list(df["species"].unique()) if "species" in df.columns else ["All"]
-    selected_species = st.sidebar.selectbox("Species", species_list, key=f"{prefix}_species_sb")
-    min_size = st.sidebar.slider("Minimum Size (Inches)", 0.0, 40.0, 0.0, 0.5, key=f"{prefix}_size_slider")
-    
-    filtered_df = df.copy()
-    if selected_species != "All":
-        filtered_df = filtered_df[filtered_df["species"] == selected_species]
-    filtered_df = filtered_df[filtered_df["length"] >= min_size]
-    return filtered_df
-
-
 # --- TAB 1: LOG A CATCH ---
 with tab1:
     st.header("Log a New Catch")
@@ -613,7 +628,10 @@ with tab1:
         else:
             species = st.selectbox("Select Type of Fish", known_species, key=f"c_species_sb_{v}")
 
-        length = st.slider("Length (Inches)", 0.0, 40.0, 15.0, 0.5, key=f"c_len_{v}")
+        length_options = [f"{x:.1f}" for x in [i * 0.5 for i in range(81)]]
+        default_len_idx = length_options.index("10.0") if "10.0" in length_options else 20
+        selected_len_str = st.selectbox("Length (Inches)", length_options, index=default_len_idx, key=f"c_len_{v}")
+        length = float(selected_len_str)
         
         # Lure Selection Dropdown + Quick Add Option
         lure_names = [l["name"] for l in lures] if lures else []
@@ -699,7 +717,7 @@ with tab2:
     st.header("Catch Location Map")
     catches = load_catches()
     if catches:
-        filtered_df = get_filtered_catches_df(catches, prefix="map_tab")
+        filtered_df = get_filtered_catches_df()
         valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
         if valid:
             m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11, tiles="Esri.WorldImagery", attribution_control=False)
@@ -780,7 +798,7 @@ with tab4:
     st.header("Catch Log")
     catches = load_catches()
     if catches:
-        filtered_df = get_filtered_catches_df(catches, prefix="hist_tab")
+        filtered_df = get_filtered_catches_df()
         
         view_style = st.radio("History View Style", ["Card View", "List View"], horizontal=True, key="history_view_style_radio")
 
@@ -957,10 +975,11 @@ with tab4:
                                         st.error("Please enter a fish type name.")
                             new_species = curr_species
 
-                        edit_length_key = f"edit_len_{row.get('id')}"
-                        edit_file_key = f"edit_file_{row.get('id')}"
-
-                        new_length = st.slider("Length (Inches)", 0.0, 40.0, float(row.get("length", 15.0)), 0.5, key=edit_length_key)
+                        length_options = [f"{x:.1f}" for x in [i * 0.5 for i in range(81)]]
+                        curr_len_str = f"{float(row.get('length', 10.0)):.1f}"
+                        d_len_idx = length_options.index(curr_len_str) if curr_len_str in length_options else 20
+                        selected_edit_len_str = st.selectbox("Length (Inches)", length_options, index=d_len_idx, key=f"edit_len_{row.get('id')}")
+                        new_length = float(selected_edit_len_str)
                         
                         # Lure Dropdown & Quick Add in Edit Panel
                         lures_list = load_lures()
@@ -993,7 +1012,7 @@ with tab4:
                                         st.error("Please enter a lure name.")
                             new_lure = "None"
 
-                        new_img_file = st.file_uploader("Replace Catch Image (Optional)", type=["jpg", "jpeg", "png"], key=edit_file_key)
+                        new_img_file = st.file_uploader("Replace Catch Image (Optional)", type=["jpg", "jpeg", "png"], key=f"edit_file_{row.get('id')}")
 
                         col_sub_save, col_sub_cancel = st.columns(2)
                         with col_sub_save:
