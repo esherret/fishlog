@@ -23,7 +23,7 @@ controller = CookieController()
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
-# Custom CSS for button grid layout, mobile responsiveness, sticky top menu, and auto-scroll fix
+# Custom CSS for button grid layout, mobile responsiveness, and sticky top menu
 st.markdown("""
 <style>
     [data-testid="collapsedControl"] svg {
@@ -79,7 +79,6 @@ st.markdown("""
     }
 </style>
 <script>
-    // Automatically scroll window to top whenever step changes
     window.scrollTo({top: 0, behavior: 'instant'});
 </script>
 """, unsafe_allow_html=True)
@@ -637,7 +636,6 @@ with tab1:
 
         st.write("Click a fish type:")
         
-        # Grid layout (4 columns for compact button grid)
         grid_cols = st.columns(4)
         for idx, sp in enumerate(known_species):
             c_idx = idx % 4
@@ -678,13 +676,13 @@ with tab1:
             st.session_state.catch_wizard_step = 1
             st.rerun()
 
-    # --- STEP 3: PICK FISH SIZE (DROPDOWN IN NUMERIC ORDER) ---
+    # --- STEP 3: PICK FISH SIZE (DROPDOWN IN STRICT NUMERIC ORDER) ---
     elif step == 3:
         st.subheader(f"Step 3: Select Length (Inches) for {st.session_state.wizard_data.get('species', 'Fish')}")
         
-        # Strictly numeric order smallest to largest: 5.0, 5.5, 6.0 ... 40.0
-        size_values = [round(i * 0.5, 1) for i in range(10, 81)]
-        size_options = [f"{val:.1f}\"" for val in size_values]
+        # Build numeric sizes properly sorted (e.g. 5.0, 5.5, 6.0 ... 40.0)
+        size_floats = [round(x * 0.5, 1) for x in range(10, 81)]
+        size_options = [f"{val:.1f}\"" for val in size_floats]
         
         default_sz_idx = size_options.index('10.0"') if '10.0"' in size_options else 0
         selected_size_str = st.selectbox("Length (Inches)", size_options, index=default_sz_idx, key="wiz_size_dropdown")
@@ -739,7 +737,7 @@ with tab1:
                         l_img_path = ""
                     
                     updated_lures = load_lures()
-                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_l_name, "image_path": l_img_path})
+                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_lure_name, "image_path": l_img_path})
                     save_lures(updated_lures)
                     st.session_state.wizard_data["lure"] = new_lure_name
                     st.session_state.catch_wizard_step = 5
@@ -904,7 +902,7 @@ with tab2:
                     deleted_ids = []
                     for c in all_raw:
                         dt_str = c.get("formatted_datetime") or f"{c.get('date')} {c.get('time')}"
-                        if c.get("user_id") == user["id"] and dt_str in selected_datetime_strs and str(c.get("is_deleted", "false")).lower() != "true":
+                        if c.get("user_id"] == user["id"] and dt_str in selected_datetime_strs and str(c.get("is_deleted", "false")).lower() != "true":
                             c["is_deleted"] = "true"
                             deleted_ids.append(c.get("id"))
 
@@ -1296,7 +1294,7 @@ if admin_tab2:
                     st.write(f"**Sample ID:** {sample.get('id')[:6]}")
                 with col_act:
                     if st.button("Delete Reference", key=f"del_sample_{s_idx}"):
-                        updated_samples = [s for s in samples if s.get("id"] != sample.get("id")]
+                        updated_samples = [s for s in samples if s.get("id") != sample.get("id")]
                         save_species_samples_table(updated_samples)
                         st.success("Reference sample removed!")
                         st.rerun()
