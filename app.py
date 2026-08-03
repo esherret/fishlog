@@ -23,7 +23,7 @@ controller = CookieController()
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
-# Custom CSS for compact button grid layout, mobile responsiveness, and sticky top menu
+# Custom CSS for button grid layout, mobile responsiveness, sticky top menu, and auto-scroll fix
 st.markdown("""
 <style>
     [data-testid="collapsedControl"] svg {
@@ -78,6 +78,10 @@ st.markdown("""
         padding: 8px 10px;
     }
 </style>
+<script>
+    // Automatically scroll window to top whenever step changes
+    window.scrollTo({top: 0, behavior: 'instant'});
+</script>
 """, unsafe_allow_html=True)
 
 DATA_DIR = "data"
@@ -674,32 +678,28 @@ with tab1:
             st.session_state.catch_wizard_step = 1
             st.rerun()
 
-    # --- STEP 3: PICK FISH SIZE (NUMERIC ORDER GRID 5.0" to 40.0" @ 0.5" INCR) ---
+    # --- STEP 3: PICK FISH SIZE (DROPDOWN IN NUMERIC ORDER) ---
     elif step == 3:
         st.subheader(f"Step 3: Select Length (Inches) for {st.session_state.wizard_data.get('species', 'Fish')}")
         
-        # Numeric float sorting: 5.0, 5.5, 6.0 ... 40.0
-        sizes = [f"{x:.1f}" for x in [i * 0.5 for i in range(10, 81)]]
+        # Strictly numeric order smallest to largest: 5.0, 5.5, 6.0 ... 40.0
+        size_values = [round(i * 0.5, 1) for i in range(10, 81)]
+        size_options = [f"{val:.1f}\"" for val in size_values]
         
-        # Grid layout (6 columns for clean compact numeric sizing grid)
-        sz_cols = st.columns(6)
-        for idx, sz in enumerate(sizes):
-            c_idx = idx % 6
-            with sz_cols[c_idx]:
-                if st.button(f"{sz}\"", key=f"btn_sz_{idx}"):
-                    st.session_state.wizard_data["length"] = float(sz)
-                    st.session_state.catch_wizard_step = 4
-                    st.rerun()
+        default_sz_idx = size_options.index('10.0"') if '10.0"' in size_options else 0
+        selected_size_str = st.selectbox("Length (Inches)", size_options, index=default_sz_idx, key="wiz_size_dropdown")
 
-        st.divider()
-        if st.button("⏭️ Skip Length"):
-            st.session_state.wizard_data["length"] = 10.0
-            st.session_state.catch_wizard_step = 4
-            st.rerun()
-
-        if st.button("⬅️ Back to Fish Type"):
-            st.session_state.catch_wizard_step = 2
-            st.rerun()
+        col_sz_next, col_sz_back = st.columns(2)
+        with col_sz_next:
+            if st.button("Next: Choose Lure ➡️", type="primary"):
+                numeric_val = float(selected_size_str.replace('"', ''))
+                st.session_state.wizard_data["length"] = numeric_val
+                st.session_state.catch_wizard_step = 4
+                st.rerun()
+        with col_sz_back:
+            if st.button("⬅️ Back to Fish Type"):
+                st.session_state.catch_wizard_step = 2
+                st.rerun()
 
     # --- STEP 4: PICK LURE (GRID OF BUTTONS + SKIP / ADD) ---
     elif step == 4:
@@ -1296,7 +1296,7 @@ if admin_tab2:
                     st.write(f"**Sample ID:** {sample.get('id')[:6]}")
                 with col_act:
                     if st.button("Delete Reference", key=f"del_sample_{s_idx}"):
-                        updated_samples = [s for s in samples if s.get("id") != sample.get("id")]
+                        updated_samples = [s for s in samples if s.get("id"] != sample.get("id")]
                         save_species_samples_table(updated_samples)
                         st.success("Reference sample removed!")
                         st.rerun()
