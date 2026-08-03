@@ -687,7 +687,6 @@ with tab1:
         size_floats = [round(x * 0.5, 1) for x in range(10, 81)]
         size_options = [f"{val:.1f}\"" for val in size_floats]
         
-        # Default to previously selected length if editing, otherwise 10.0"
         prev_length = st.session_state.wizard_data.get("length", 10.0)
         prev_length_str = f"{prev_length:.1f}\""
         default_sz_idx = size_options.index(prev_length_str) if prev_length_str in size_options else 0
@@ -738,8 +737,8 @@ with tab1:
             if st.button("➕ Add Lure & Select"):
                 if new_l_name:
                     l_img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
-                    if new_lure_img:
-                        process_image_orientation(new_lure_img).save(l_img_path, optimize=True, quality=80)
+                    if new_l_img:
+                        process_image_orientation(new_l_img).save(l_img_path, optimize=True, quality=80)
                     else:
                         l_img_path = ""
                     
@@ -1189,7 +1188,7 @@ with tab4:
                 st.write(f"🎣 **{lure.get('name')}**")
             with col_l_act:
                 if st.button("Delete Lure", key=f"del_lure_{l_idx}_{lure.get('id')}"):
-                    updated_lures = [l for l in lures if l.get("id"] != lure.get("id")]
+                    updated_lures = [l for l in lures if l.get("id") != lure.get("id")]
                     save_lures(updated_lures)
                     st.success("Lure deleted!")
                     st.rerun()
@@ -1302,7 +1301,7 @@ if admin_tab2:
                     st.write(f"**Sample ID:** {sample.get('id')[:6]}")
                 with col_act:
                     if st.button("Delete Reference", key=f"del_sample_{s_idx}"):
-                        updated_samples = [s for s in samples if s.get("id"] != sample.get("id")]
+                        updated_samples = [s for s in samples if s.get("id") != sample.get("id")]
                         save_species_samples_table(updated_samples)
                         st.success("Reference sample removed!")
                         st.rerun()
