@@ -11,9 +11,7 @@ import folium
 from supabase import create_client, Client
 from PIL import Image, ImageOps
 from streamlit_cookies_controller import CookieController
-import cv2
 import numpy as np
-from skimage.metrics import structural_similarity as ssim
 
 # Configure page
 st.set_page_config(page_title="Fish Catch Log", page_icon="🎣", layout="wide")
@@ -571,21 +569,16 @@ def get_moon_phase(dt):
     else: return "Waning Crescent"
 
 
-# --- ADVANCED FREE COMPUTER VISION & PATTERN RECOGNITION ENGINE ---
+# --- ADVANCED FREE COMPUTER VISION & PATTERN RECOGNITION ENGINE (Pure Pillow/NumPy) ---
 def recognize_fish_and_lure(processed_img_pil, lures):
     """
-    Combines OpenCV Color Histograms + scikit-image Structural Similarity (SSIM) 
-    against the species_samples table, backed by historical frequency weighting.
+    Compares image pixel arrays and color distribution using pure Pillow and NumPy 
+    without requiring native C++ OpenCV binary packages.
     """
     try:
-        img_np = np.array(processed_img_pil)
-        bgr_img = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
-        gray_query = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
-        gray_query_resized = cv2.resize(gray_query, (200, 200))
-
-        hsv_query = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2HSV)
-        hist_query = cv2.calcHist([hsv_query], [0, 1], None, [50, 60], [0, 180, 0, 256])
-        cv2.normalize(hist_query, hist_query, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
+        # Resize query image for comparison
+        img_q = processed_img_pil.resize((100, 100)).convert("RGB")
+        arr_q = np.array(img_q, dtype=np.float32)
 
         samples = load_species_samples()
         species_scores = {}
@@ -599,29 +592,21 @@ def recognize_fish_and_lure(processed_img_pil, lures):
 
                 if sample_path and os.path.exists(sample_path):
                     try:
-                        s_bgr = cv2.imread(sample_path)
-                        if s_bgr is None:
-                            continue
-                        s_gray = cv2.cvtColor(s_bgr, cv2.COLOR_BGR2GRAY)
-                        s_gray_resized = cv2.resize(s_gray, (200, 200))
+                        s_img = Image.open(sample_path).resize((100, 100)).convert("RGB")
+                        arr_s = np.array(s_img, dtype=np.float32)
 
-                        score_ssim, _ = ssim(gray_query_resized, s_gray_resized, full=True)
+                        # Mean Absolute Error similarity metric normalized [0 to 1]
+                        diff = np.mean(np.abs(arr_q - arr_s))
+                        score = max(0.0, 1.0 - (diff / 255.0))
 
-                        s_hsv = cv2.cvtColor(s_bgr, cv2.COLOR_BGR2HSV)
-                        hist_sample = cv2.calcHist([s_hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
-                        cv2.normalize(hist_sample, hist_sample, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
-                        score_hist = cv2.compareHist(hist_query, hist_sample, cv2.HISTCMP_CORREL)
-                        score_hist = max(0.0, score_hist)
-
-                        combined_score = (0.7 * score_ssim) + (0.3 * score_hist)
-
-                        if species_name not in species_scores or combined_score > species_scores[species_name]:
-                            species_scores[species_name] = combined_score
+                        if species_name not in species_scores or score > species_scores[species_name]:
+                            species_scores[species_name] = score
                     except Exception:
                         continue
 
         detected_species = max(species_scores, key=species_scores.get) if species_scores else "Snook"
         
+        # Historical frequency weighting
         user_catches = load_catches()
         if user_catches:
             species_counts = {}
