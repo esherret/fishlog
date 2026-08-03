@@ -434,16 +434,16 @@ def get_filtered_catches_df():
     return filtered_df
 
 
-# Build navigation tabs dynamically based on Admin role
-tab_names = ["🎣 Log a Catch", "🗺️ Catch Map", "🧩 Manage Lures", "📋 Catch Log", "🗑️ Recycle Bin"]
+# Build navigation tabs dynamically in the requested order: Log a Catch, Catch Log, Catch Map, Manage Lures, Admin (if applicable)
+tab_names = ["🎣 Log a Catch", "📋 Catch Log", "🗺️ Catch Map", "🧩 Manage Lures"]
 if user.get("is_admin"):
-    tab_names.append("🛡️ User Management")
-    tab_names.append("🧬 Fish Recognition Library")
+    tab_names.append("🛡️ Admin: User Management")
+    tab_names.append("🧬 Admin: Fish Recognition Library")
 
 tabs = st.tabs(tab_names)
-tab1, tab2, tab3, tab4, tab5 = tabs[0], tabs[1], tabs[2], tabs[3], tabs[4]
-admin_tab = tabs[5] if user.get("is_admin") and len(tabs) > 5 else None
-recognition_tab = tabs[6] if user.get("is_admin") and len(tabs) > 6 else None
+tab1, tab2, tab3, tab4 = tabs[0], tabs[1], tabs[2], tabs[3]
+admin_tab1 = tabs[4] if user.get("is_admin") and len(tabs) > 4 else None
+admin_tab2 = tabs[5] if user.get("is_admin") and len(tabs) > 5 else None
 
 
 # Helper functions for app processing
@@ -761,89 +761,8 @@ with tab1:
         st.info("Please upload or take a photo of your catch to begin logging.")
 
 
-# --- TAB 2: CATCH MAP ---
+# --- TAB 2: CATCH LOG ---
 with tab2:
-    st.header("Catch Location Map")
-    catches = load_catches()
-    if catches:
-        filtered_df = get_filtered_catches_df()
-        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
-        if valid:
-            m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11, tiles="Esri.WorldImagery", attribution_control=False)
-            fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
-            for c in valid:
-                img_path = c.get("image_path")
-                img_html = ""
-                if img_path and os.path.exists(img_path):
-                    import base64
-                    with open(img_path, "rb") as img_file:
-                        encoded = base64.b64encode(img_file.read()).decode("utf-8")
-                        img_html = f"<br><img src='data:image/jpeg;base64,{encoded}' width='150' style='border-radius: 4px; margin-top: 5px;'/>"
-                
-                popup_html = f"""
-                <div style="font-family: sans-serif; width: 160px;">
-                    <b>🐟 {c.get('species')}</b><br>
-                    <b>Length:</b> {c.get('length')} in<br>
-                    <b>Date:</b> {c.get('formatted_datetime')}<br>
-                    <b>Lure:</b> {c.get('lure')}<br>
-                    {img_html}
-                </div>
-                """
-                folium.Marker(
-                    location=[float(c["latitude"]), float(c["longitude"])],
-                    popup=folium.Popup(popup_html, max_width=200),
-                    icon=fish_icon
-                ).add_to(m)
-            st_folium(m, width=700, height=500)
-        else:
-            st.info("No mapped catches match filters.")
-    else:
-        st.info("No catches recorded yet.")
-
-
-# --- TAB 3: MANAGE LURES ---
-with tab3:
-    st.header("Manage Lures")
-    with st.form("lure_form", clear_on_submit=True):
-        l_name = st.text_input("New Lure Name")
-        l_img = st.file_uploader("Upload Lure Image", type=["jpg", "jpeg", "png"])
-        if st.form_submit_button("Add Lure") and l_name:
-            img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
-            if l_img:
-                process_image_orientation(l_img).save(img_path, optimize=True, quality=80)
-            else:
-                img_path = ""
-            lures = load_lures()
-            lures.append({"id": str(uuid.uuid4()), "name": l_name, "image_path": img_path})
-            save_lures(lures)
-            st.success("Lure added!")
-            st.rerun()
-
-    st.divider()
-    st.subheader("Your Lures")
-    lures = load_lures()
-    if lures:
-        for l_idx, lure in enumerate(lures):
-            col_l_img, col_l_info, col_l_act = st.columns([1, 3, 1])
-            with col_l_img:
-                l_path = lure.get("image_path")
-                if l_path and os.path.exists(l_path):
-                    st.image(l_path, width=80)
-            with col_l_info:
-                st.write(f"🎣 **{lure.get('name')}**")
-            with col_l_act:
-                if st.button("Delete Lure", key=f"del_lure_{l_idx}_{lure.get('id')}"):
-                    updated_lures = [l for l in lures if l.get("id") != lure.get("id")]
-                    save_lures(updated_lures)
-                    st.success("Lure deleted!")
-                    st.rerun()
-            st.divider()
-    else:
-        st.info("No lures added yet.")
-
-
-# --- TAB 4: CATCH LOG ---
-with tab4:
     st.header("Catch Log")
     catches = load_catches()
     if catches:
@@ -1137,46 +1056,90 @@ with tab4:
         st.info("No history found.")
 
 
-# --- TAB 5: RECYCLE BIN ---
-with tab5:
-    st.header("🗑️ Recycle Bin (Deleted Catches)")
-    st.write("Restore catches deleted by mistake or permanently delete them.")
-    
-    trashed = load_trashed_catches()
-    if trashed:
-        for idx, row in enumerate(trashed):
-            col_img, col_info, col_act1, col_act2 = st.columns([1, 2, 1, 1])
-            with col_img:
-                img_p = row.get("image_path")
-                if img_p and os.path.exists(img_p):
-                    st.image(img_p, width=120)
-            with col_info:
-                st.write(f"🐟 **{row.get('species')}** ({row.get('length')} in)")
-                st.write(f"📅 **Date:** {row.get('formatted_datetime')}")
-            with col_act1:
-                if st.button("♻️ Restore", key=f"restore_{idx}_{row.get('id')}"):
-                    all_raw = load_all_catches_raw()
-                    for c in all_raw:
-                        if c.get("id") == row.get("id"):
-                            c["is_deleted"] = "false"
-                    save_all_catches_raw(all_raw)
-                    st.success("Catch restored!")
-                    st.rerun()
-            with col_act2:
-                if st.button("🔥 Delete Forever", key=f"perm_del_{idx}_{row.get('id')}"):
-                    all_raw = load_all_catches_raw()
-                    updated_raw = [c for c in all_raw if c.get("id") != row.get("id")]
-                    save_all_catches_raw(updated_raw)
-                    st.success("Permanently deleted!")
+# --- TAB 3: CATCH MAP ---
+with tab3:
+    st.header("Catch Location Map")
+    catches = load_catches()
+    if catches:
+        filtered_df = get_filtered_catches_df()
+        valid = [r.to_dict() for _, r in filtered_df.iterrows() if r.get("latitude") is not None and r.get("longitude") is not None]
+        if valid:
+            m = folium.Map(location=[float(valid[0]["latitude"]), float(valid[0]["longitude"])], zoom_start=11, tiles="Esri.WorldImagery", attribution_control=False)
+            fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
+            for c in valid:
+                img_path = c.get("image_path")
+                img_html = ""
+                if img_path and os.path.exists(img_path):
+                    import base64
+                    with open(img_path, "rb") as img_file:
+                        encoded = base64.b64encode(img_file.read()).decode("utf-8")
+                        img_html = f"<br><img src='data:image/jpeg;base64,{encoded}' width='150' style='border-radius: 4px; margin-top: 5px;'/>"
+                
+                popup_html = f"""
+                <div style="font-family: sans-serif; width: 160px;">
+                    <b>🐟 {c.get('species')}</b><br>
+                    <b>Length:</b> {c.get('length')} in<br>
+                    <b>Date:</b> {c.get('formatted_datetime')}<br>
+                    <b>Lure:</b> {c.get('lure')}<br>
+                    {img_html}
+                </div>
+                """
+                folium.Marker(
+                    location=[float(c["latitude"]), float(c["longitude"])],
+                    popup=folium.Popup(popup_html, max_width=200),
+                    icon=fish_icon
+                ).add_to(m)
+            st_folium(m, width=700, height=500)
+        else:
+            st.info("No mapped catches match filters.")
+    else:
+        st.info("No catches recorded yet.")
+
+
+# --- TAB 4: MANAGE LURES (Accessible to all users) ---
+with tab4:
+    st.header("Manage Lures")
+    with st.form("lure_form", clear_on_submit=True):
+        l_name = st.text_input("New Lure Name")
+        l_img = st.file_uploader("Upload Lure Image", type=["jpg", "jpeg", "png"])
+        if st.form_submit_button("Add Lure") and l_name:
+            img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
+            if l_img:
+                process_image_orientation(l_img).save(img_path, optimize=True, quality=80)
+            else:
+                img_path = ""
+            lures = load_lures()
+            lures.append({"id": str(uuid.uuid4()), "name": l_name, "image_path": img_path})
+            save_lures(lures)
+            st.success("Lure added!")
+            st.rerun()
+
+    st.divider()
+    st.subheader("Your Lures")
+    lures = load_lures()
+    if lures:
+        for l_idx, lure in enumerate(lures):
+            col_l_img, col_l_info, col_l_act = st.columns([1, 3, 1])
+            with col_l_img:
+                l_path = lure.get("image_path")
+                if l_path and os.path.exists(l_path):
+                    st.image(l_path, width=80)
+            with col_l_info:
+                st.write(f"🎣 **{lure.get('name')}**")
+            with col_l_act:
+                if st.button("Delete Lure", key=f"del_lure_{l_idx}_{lure.get('id')}"):
+                    updated_lures = [l for l in lures if l.get("id") != lure.get("id")]
+                    save_lures(updated_lures)
+                    st.success("Lure deleted!")
                     st.rerun()
             st.divider()
     else:
-        st.info("Recycle bin is empty.")
+        st.info("No lures added yet.")
 
 
-# --- TAB 6: ADMIN MANAGEMENT CONSOLE ---
-if admin_tab:
-    with admin_tab:
+# --- ADMIN TAB 1: USER MANAGEMENT CONSOLE ---
+if admin_tab1:
+    with admin_tab1:
         st.header("🛡️ User Management Console")
         st.write("Manage registered user accounts, permissions, and records.")
         
@@ -1226,9 +1189,9 @@ if admin_tab:
             st.info("No users registered.")
 
 
-# --- TAB 7: FISH RECOGNITION LIBRARY (ADMIN) ---
-if recognition_tab:
-    with recognition_tab:
+# --- ADMIN TAB 2: FISH RECOGNITION LIBRARY ---
+if admin_tab2:
+    with admin_tab2:
         st.header("🧬 Fish Recognition Accuracy Library")
         st.write("Review, manage, and add reference sample images used by the heuristic model to improve species identification accuracy.")
         
