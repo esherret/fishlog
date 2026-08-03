@@ -23,7 +23,7 @@ controller = CookieController()
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
-# Custom CSS for button grid layout, mobile responsiveness, and sticky top menu
+# Custom CSS for compact button grid layout, mobile responsiveness, and sticky top menu
 st.markdown("""
 <style>
     [data-testid="collapsedControl"] svg {
@@ -70,11 +70,12 @@ st.markdown("""
         padding-bottom: 5px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
     }
-    /* Custom styling for button grid items */
+    /* Custom styling for compact button grids */
     .stButton button {
         width: 100%;
         border-radius: 6px;
         font-weight: 500;
+        padding: 8px 10px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -586,7 +587,7 @@ def get_moon_phase(dt):
 
 # --- TAB 1: LOG A CATCH (PICK FROM BUTTONS WIZARD) ---
 with tab1:
-    st.header("Log a New Catch (Pick From Buttons)")
+    st.header("Log a Catch (Pick From Buttons)")
 
     if "catch_wizard_step" not in st.session_state:
         st.session_state.catch_wizard_step = 1
@@ -594,7 +595,7 @@ with tab1:
 
     step = st.session_state.catch_wizard_step
 
-    # --- STEP 1: UPLOAD IMAGE & ROTATE ---
+    # --- STEP 1: UPLOAD IMAGE & JUMP STRAIGHT TO FISH TYPE ---
     if step == 1:
         st.subheader("Step 1: Upload Fish Photo")
         upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, key="wiz_upload_method")
@@ -616,11 +617,11 @@ with tab1:
             st.session_state.wizard_data["latitude"] = lat if lat is not None else 28.39
             st.session_state.wizard_data["longitude"] = lon if lon is not None else -80.60
 
-            if st.button("Next: Choose Fish Type ➡️", type="primary"):
-                st.session_state.catch_wizard_step = 2
-                st.rerun()
+            # Jump straight to Step 2 (Fish Type Screen) immediately
+            st.session_state.catch_wizard_step = 2
+            st.rerun()
 
-    # --- STEP 2: PICK FISH TYPE (BUTTONS) ---
+    # --- STEP 2: PICK FISH TYPE (GRID OF BUTTONS) ---
     elif step == 2:
         st.subheader("Step 2: Select Fish Type")
         
@@ -630,12 +631,13 @@ with tab1:
             known_species = ["Snook", "Redfish", "Trout", "Tarpon", "Bass", "Flounder"]
         known_species = sorted(list(set(known_species)))
 
-        st.write("Click a fish type, or add a new one:")
+        st.write("Click a fish type:")
         
-        cols = st.columns(3)
+        # Grid layout (4 columns for compact button grid)
+        grid_cols = st.columns(4)
         for idx, sp in enumerate(known_species):
-            col_idx = idx % 3
-            with cols[col_idx]:
+            c_idx = idx % 4
+            with grid_cols[c_idx]:
                 if st.button(f"🐟 {sp}", key=f"btn_sp_{idx}"):
                     st.session_state.wizard_data["species"] = sp
                     st.session_state.catch_wizard_step = 3
@@ -668,19 +670,21 @@ with tab1:
                     st.session_state.catch_wizard_step = 3
                     st.rerun()
 
-        if st.button("⬅️ Back"):
+        if st.button("⬅️ Back to Photo Upload"):
             st.session_state.catch_wizard_step = 1
             st.rerun()
 
-    # --- STEP 3: PICK FISH SIZE (BUTTONS 5" TO 40" @ 0.5" INCR) ---
+    # --- STEP 3: PICK FISH SIZE (NUMERIC ORDER GRID 5.0" to 40.0" @ 0.5" INCR) ---
     elif step == 3:
         st.subheader(f"Step 3: Select Length (Inches) for {st.session_state.wizard_data.get('species', 'Fish')}")
         
-        sizes = [f"{i * 0.5:.1f}" for i in range(10, 81)]
+        # Numeric float sorting: 5.0, 5.5, 6.0 ... 40.0
+        sizes = [f"{x:.1f}" for x in [i * 0.5 for i in range(10, 81)]]
         
-        sz_cols = st.columns(5)
+        # Grid layout (6 columns for clean compact numeric sizing grid)
+        sz_cols = st.columns(6)
         for idx, sz in enumerate(sizes):
-            c_idx = idx % 5
+            c_idx = idx % 6
             with sz_cols[c_idx]:
                 if st.button(f"{sz}\"", key=f"btn_sz_{idx}"):
                     st.session_state.wizard_data["length"] = float(sz)
@@ -697,7 +701,7 @@ with tab1:
             st.session_state.catch_wizard_step = 2
             st.rerun()
 
-    # --- STEP 4: PICK LURE (BUTTONS + SKIP / ADD) ---
+    # --- STEP 4: PICK LURE (GRID OF BUTTONS + SKIP / ADD) ---
     elif step == 4:
         st.subheader("Step 4: Select Lure Used")
         
@@ -735,7 +739,7 @@ with tab1:
                         l_img_path = ""
                     
                     updated_lures = load_lures()
-                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_lure_name, "image_path": l_img_path})
+                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_l_name, "image_path": l_img_path})
                     save_lures(updated_lures)
                     st.session_state.wizard_data["lure"] = new_lure_name
                     st.session_state.catch_wizard_step = 5
