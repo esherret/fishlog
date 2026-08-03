@@ -628,6 +628,10 @@ with tab1:
     elif step == 2:
         st.subheader("Step 2: Select Fish Type")
         
+        # Show picture of the fish being logged
+        if "processed_image" in st.session_state.wizard_data:
+            st.image(st.session_state.wizard_data["processed_image"], caption="Catch Photo", width=250)
+
         samples = load_species_samples()
         known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")])))
         if not known_species:
@@ -683,7 +687,11 @@ with tab1:
         size_floats = [round(x * 0.5, 1) for x in range(10, 81)]
         size_options = [f"{val:.1f}\"" for val in size_floats]
         
-        default_sz_idx = size_options.index('10.0"') if '10.0"' in size_options else 0
+        # Default to previously selected length if editing, otherwise 10.0"
+        prev_length = st.session_state.wizard_data.get("length", 10.0)
+        prev_length_str = f"{prev_length:.1f}\""
+        default_sz_idx = size_options.index(prev_length_str) if prev_length_str in size_options else 0
+
         selected_size_str = st.selectbox("Length (Inches)", size_options, index=default_sz_idx, key="wiz_size_dropdown")
 
         col_sz_next, col_sz_back = st.columns(2)
@@ -811,8 +819,9 @@ with tab1:
                 st.rerun()
 
         with col_fin2:
-            if st.button("✏️ Edit Details (Restart Wizard)"):
-                st.session_state.catch_wizard_step = 1
+            if st.button("✏️ Edit Details"):
+                # Take user right back to the fish type selection screen (Step 2)
+                st.session_state.catch_wizard_step = 2
                 st.rerun()
 
         with col_fin3:
@@ -1235,7 +1244,7 @@ if admin_tab1:
                         if submit_delete:
                             real_admin_obj = st.session_state.get("real_admin_user")
                             if real_admin_obj and u_id == real_admin_obj["id"]:
-                                st.error("You cannot delete your own active admin account while logged in.")
+                                st.error("You cannot delete your own active admin account active while logged in.")
                             else:
                                 success, msg = admin_delete_user(u_id)
                                 if success:
@@ -1253,7 +1262,7 @@ if admin_tab2:
         st.header("🧬 Fish Recognition Accuracy Library")
         st.write("Review, manage, and add reference sample images used by the heuristic model to improve species identification accuracy.")
         
-        with st.form("add_recognition_sample_form", clear_on_submit=True):
+        with st.form("add_recognition_setup_form", clear_on_submit=True):
             st.subheader("➕ Add New Recognition Reference Sample")
             new_sample_species = st.text_input("Fish Species Name")
             new_sample_file = st.file_uploader("Upload Reference Image", type=["jpg", "jpeg", "png"])
