@@ -588,7 +588,6 @@ def get_moon_phase(dt):
 with tab1:
     st.header("Log a New Catch (Pick From Buttons)")
 
-    # Initialize wizard step if not present
     if "catch_wizard_step" not in st.session_state:
         st.session_state.catch_wizard_step = 1
         st.session_state.wizard_data = {}
@@ -633,8 +632,7 @@ with tab1:
 
         st.write("Click a fish type, or add a new one:")
         
-        # Display species as button grid (3 per row)
-        cols = st.cmp_cols = st.columns(3)
+        cols = st.columns(3)
         for idx, sp in enumerate(known_species):
             col_idx = idx % 3
             with cols[col_idx]:
@@ -655,7 +653,6 @@ with tab1:
             if st.button("➕ Add & Select"):
                 if new_sp_input:
                     st.session_state.wizard_data["species"] = new_sp_input
-                    # Save sample reference
                     img_filename = f"sample_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
                     img_path = os.path.join(SPECIES_SAMPLES_DIR, img_filename)
                     st.session_state.wizard_data["processed_image"].save(img_path, optimize=True, quality=80)
@@ -679,9 +676,8 @@ with tab1:
     elif step == 3:
         st.subheader(f"Step 3: Select Length (Inches) for {st.session_state.wizard_data.get('species', 'Fish')}")
         
-        sizes = [f"{i * 0.5:.1f}" for i in range(10, 81)] # 5.0 to 40.0 in 0.5 steps
+        sizes = [f"{i * 0.5:.1f}" for i in range(10, 81)]
         
-        # Display sizes in button grid (5 per row)
         sz_cols = st.columns(5)
         for idx, sz in enumerate(sizes):
             c_idx = idx % 5
@@ -739,7 +735,7 @@ with tab1:
                         l_img_path = ""
                     
                     updated_lures = load_lures()
-                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_l_name, "image_path": l_img_path})
+                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_lure_name, "image_path": l_img_path})
                     save_lures(updated_lures)
                     st.session_state.wizard_data["lure"] = new_lure_name
                     st.session_state.catch_wizard_step = 5
@@ -797,7 +793,6 @@ with tab1:
                 })
                 save_all_catches_raw(catches)
 
-                # Add recognition sample
                 all_s = load_species_samples()
                 all_s.append({
                     "id": str(uuid.uuid4()),
@@ -912,7 +907,7 @@ with tab2:
                     save_all_catches_raw(all_raw)
 
                     samples = load_species_samples()
-                    updated_samples = [s for s in samples if s.get("catch_id"] not in deleted_ids]
+                    updated_samples = [s for s in samples if s.get("catch_id") not in deleted_ids]
                     save_species_samples_table(updated_samples)
 
                     st.success(f"Successfully moved {len(selected_rows)} selected catch(es) to Recycle Bin!")
@@ -984,7 +979,7 @@ with tab2:
                         save_all_catches_raw(all_c)
                         
                         samples = load_species_samples()
-                        updated_samples = [s for s in samples if s.get("catch_id"] != row.get("id")]
+                        updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
                         save_species_samples_table(updated_samples)
                         
                         st.success("Moved to Recycle Bin!")
@@ -1084,7 +1079,7 @@ with tab2:
                                             c["image_path"] = img_path
                                             
                                             samples = load_species_samples()
-                                            s_match = next((s for s in samples if s.get("catch_id"] == row.get("id")), None)
+                                            s_match = next((s for s in samples if s.get("catch_id") == row.get("id")), None)
                                             if s_match:
                                                 s_match["species"] = new_species
                                                 s_match["image_path"] = img_path
