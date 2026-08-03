@@ -569,90 +569,6 @@ def get_moon_phase(dt):
     else: return "Waning Crescent"
 
 
-# --- ADVANCED FREE RECOGNITION ENGINE WITH CONFIDENCE THRESHOLDING ---
-def recognize_fish_and_lure(processed_img_pil, lures):
-    """
-    Compares color histograms and adds confidence thresholding so it 
-    falls back to historical frequency instead of falsely locking onto a default species.
-    """
-    detected_species = "Snook"
-    try:
-        img_q = processed_img_pil.resize((64, 64)).convert("RGB")
-        arr_q = np.array(img_q, dtype=np.float32)
-        # Compute color histogram distribution vector for query
-        hist_q, _ = np.histogramdd(arr_q.reshape(-1, 3), bins=(8, 8, 8), range=((0, 256), (0, 256), (0, 256)))
-        hist_q = hist_q / np.sum(hist_q)
-
-        samples = load_species_samples()
-        species_scores = {}
-
-        if samples:
-            for sample in samples:
-                sample_path = sample.get("image_path")
-                species_name = sample.get("species")
-                if not species_name:
-                    continue
-
-                if sample_path and os.path.exists(sample_path):
-                    try:
-                        s_img = Image.open(sample_path).resize((64, 64)).convert("RGB")
-                        arr_s = np.array(s_img, dtype=np.float32)
-                        hist_s, _ = np.histogramdd(arr_s.reshape(-1, 3), bins=(8, 8, 8), range=((0, 256), (0, 256), (0, 256)))
-                        hist_s = hist_s / np.sum(hist_s)
-
-                        # Histogram intersection similarity score [0 to 1]
-                        similarity = np.sum(np.minimum(hist_q, hist_s))
-
-                        if species_name not in species_scores or similarity > species_scores[species_name]:
-                            species_scores[species_name] = similarity
-                    except Exception:
-                        continue
-
-        # Check top match confidence
-        if species_scores:
-            best_species = max(species_scores, key=species_scores.get)
-            best_score = species_scores[best_species]
-            
-            # Confidence threshold: if similarity is too low, rely on user history or default
-            if best_score >= 0.55:
-                detected_species = best_species
-
-        # Historical frequency weighting / Fallback
-        user_catches = load_catches()
-        if user_catches:
-            species_counts = {}
-            for c in user_catches:
-                sp = c.get("species")
-                species_counts[sp] = species_counts.get(sp, 0) + 1
-            
-            if species_counts:
-                top_historical_species = max(species_counts, key=species_counts.get)
-                # If visual match was weak (< 0.55), default to user's most frequently logged catch
-                if not species_scores or max(species_scores.values()) < 0.55:
-                    detected_species = top_historical_species
-
-    except Exception:
-        detected_species = "Snook"
-
-    # Smart Lure Prediction using Historical Frequency
-    detected_lure = None
-    if lures and user_catches:
-        lure_counts = {}
-        for c in user_catches:
-            if c.get("species", "").lower() == detected_species.lower():
-                l = c.get("lure")
-                if l and l != "None":
-                    lure_counts[l] = lure_counts.get(l, 0) + 1
-        if lure_counts:
-            detected_lure = max(lure_counts, key=lure_counts.get)
-        else:
-            detected_lure = lures[0]["name"]
-    elif lures:
-        detected_lure = lures[0]["name"]
-
-    return detected_species, detected_lure
-
-
 # --- TAB 1: LOG A CATCH ---
 with tab1:
     st.header("Log a New Catch")
@@ -669,66 +585,46 @@ with tab1:
     if catch_image_file:
         rotation = st.selectbox("Rotate Image", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key=f"rot_sel_{v}")
         processed_image = process_image_orientation(catch_image_file, rotation)
-        st.image(processed_image, caption="Processed Photo", width=350)
 
         dt, lat, lon = extract_exif(catch_image_file)
         
-        col_dt1, col_dt2 = st.columns(2)
-        with col_dt1:
-            log_date = st.date_input("Date", value=dt.date() if dt else datetime.now().date(), format="MM/DD/YYYY", key=f"c_date_{v}")
-        with col_dt2:
-            log_time = st.time_input("Time", value=dt.time() if dt else datetime.now().time(), key=f"c_time_{v}")
-
-        st.write("📍 **Catch Location:**")
-        col_lat, col_lon = st.columns(2)
-        with col_lat:
-            manual_lat = st.number_input("Latitude", value=lat if lat is not None else 28.39, format="%.6f", key=f"c_lat_{v}")
-        with col_lon:
-            manual_lon = st.number_input("Longitude", value=lon if lon is not None else -80.60, format="%.6f", key=f"catch_lon_input_{v}")
-        
-        m_thumb = folium.Map(location=[manual_lat, manual_lon], zoom_start=12, width="100%", height="250px", tiles="Esri.WorldImagery", attribution_control=False)
-        fish_icon = folium.Icon(icon="fish", prefix="fa", color="blue", icon_color="white")
-        folium.Marker(location=[manual_lat, manual_lon], popup="Catch Location", icon=fish_icon).add_to(m_thumb)
-        st_folium(m_thumb, width=700, height=250, key=f"thumb_map_{v}")
-
-        combined_dt = datetime.combine(log_date, log_time)
+        # Hidden coordinate defaults (lat/lon/weather still captured in background data)
+        manual_lat = lat if lat is not None else 28.39
+        manual_lon = lon if lon is not None else -80.60
+        combined_dt = datetime.combine(dt.date() if dt else datetime.now().date(), dt.time() if dt else datetime.now().time())
         formatted_dt_str = combined_dt.strftime("%m/%d/%Y %I:%M %p")
-        
         weather_desc, wind_speed, wind_dir = get_nws_weather(manual_lat, manual_lon)
-        st.info(f"🌤️ **Weather:** {weather_desc} | 💨 **Wind:** {wind_speed} {wind_dir} | 🌊 **Tide:** {get_tide_info(manual_lat, manual_lon, combined_dt)} | 🌙 **Moon:** {get_moon_phase(combined_dt)}")
 
-        lures = load_lures()
-        rec_species, rec_lure = recognize_fish_and_lure(processed_image, lures)
+        # Determine most recent upload species for this user
+        all_user_catches = load_catches()
+        default_species = "Snook"
+        if all_user_catches:
+            # Sort raw or existing catches by date/time or appearance
+            last_catch = all_user_catches[-1]
+            if last_catch.get("species"):
+                default_species = last_catch.get("species")
 
         samples = load_species_samples()
-        known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")])))
+        known_species = sorted(list(set([s.get("species"] for s in samples if s.get("species")])))
         if not known_species:
             known_species = ["Snook", "Redfish", "Trout", "Tarpon", "Bass", "Flounder"]
-        if rec_species not in known_species:
-            known_species.insert(0, rec_species)
+        if default_species not in known_species:
+            known_species.insert(0, default_species)
 
-        col_sp1, col_sp2 = st.columns([3, 1])
-        with col_sp1:
-            is_correct_id = st.checkbox("Correctly ID'd", value=False, key=f"correct_id_check_{v}")
-        
-        if is_correct_id:
-            species = st.text_input("Type of Fish", value=rec_species, key=f"c_species_{v}")
-        else:
-            species = st.selectbox("Select Type of Fish", known_species, key=f"c_species_sb_{v}")
+        # 1. Type of Fish first
+        species = st.selectbox("Select Type of Fish", known_species, index=known_species.index(default_species) if default_species in known_species else 0, key=f"c_species_sb_{v}")
 
+        # 2. Length next
         length_options = [f"{x:.1f}" for x in [i * 0.5 for i in range(81)]]
         default_len_idx = length_options.index("10.0") if "10.0" in length_options else 20
         selected_len_str = st.selectbox("Length (Inches)", length_options, index=default_len_idx, key=f"c_len_{v}")
         length = float(selected_len_str)
-        
+
+        # 3. Lure next + Quick Add Option
+        lures = load_lures()
         lure_names = [l["name"] for l in lures] if lures else []
         lure_options = lure_names + ["➕ Add New Lure..."]
-        
-        default_lure_idx = 0
-        if rec_lure and rec_lure in lure_names:
-            default_lure_idx = lure_names.index(rec_lure)
-
-        selected_lure_choice = st.selectbox("Lure Used", lure_options, index=default_lure_idx, key=f"c_lure_sb_{v}")
+        selected_lure_choice = st.selectbox("Lure Used", lure_options, key=f"c_lure_sb_{v}")
         
         selected_lure = selected_lure_choice
         if selected_lure_choice == "➕ Add New Lure...":
@@ -752,6 +648,19 @@ with tab1:
                         st.error("Please enter a lure name.")
             selected_lure = "None"
 
+        # 4. Image next
+        st.image(processed_image, caption="Processed Photo", width=350)
+
+        # 5. Date and Time next
+        col_dt1, col_dt2 = st.columns(2)
+        with col_dt1:
+            log_date = st.date_input("Date", value=dt.date() if dt else datetime.now().date(), format="MM/DD/YYYY", key=f"c_date_{v}")
+        with col_dt2:
+            log_time = st.time_input("Time", value=dt.time() if dt else datetime.now().time(), key=f"c_time_{v}")
+
+        final_combined_dt = datetime.combine(log_date, log_time)
+        final_formatted_dt_str = final_combined_dt.strftime("%m/%d/%Y %I:%M %p")
+
         if st.button("Save Catch Entry", type="primary", key=f"save_btn_{v}"):
             img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
             img_path = os.path.join(CATCHES_DIR, img_filename)
@@ -764,7 +673,7 @@ with tab1:
                 "user_id": user["id"],
                 "date": log_date.strftime("%m/%d/%Y"),
                 "time": log_time.strftime("%I:%M %p"),
-                "formatted_datetime": formatted_dt_str,
+                "formatted_datetime": final_formatted_dt_str,
                 "latitude": manual_lat,
                 "longitude": manual_lon,
                 "species": species if species else "Unknown",
@@ -773,8 +682,8 @@ with tab1:
                 "weather": weather_desc,
                 "wind_speed": wind_speed,
                 "wind_direction": wind_dir,
-                "tide": get_tide_info(manual_lat, manual_lon, combined_dt),
-                "moon_phase": get_moon_phase(combined_dt),
+                "tide": get_tide_info(manual_lat, manual_lon, final_combined_dt),
+                "moon_phase": get_moon_phase(final_combined_dt),
                 "image_path": img_path,
                 "is_deleted": "false"
             })
