@@ -21,15 +21,29 @@ controller = CookieController()
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
-# Custom CSS for black slider thumbs, tracks, sidebar filter icon, and responsive media layout
+# Custom CSS for larger touch-friendly sliders, black thumbs/tracks, sidebar filter icon, and responsive media layout
 st.markdown("""
 <style>
+    /* Larger, touch-friendly slider thumbs and tracks for mobile and desktop accessibility */
     .stSlider [data-baseweb="slider"] div[role="slider"] {
         background-color: #000000 !important;
         border-color: #000000 !important;
+        width: 28px !important;
+        height: 28px !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3) !important;
     }
     .stSlider [data-baseweb="slider"] div > div > div > div {
         background-color: #000000 !important;
+        height: 8px !important;
+    }
+    @media (max-width: 768px) {
+        .stSlider [data-baseweb="slider"] div[role="slider"] {
+            width: 36px !important;
+            height: 36px !important;
+        }
+        .stSlider [data-baseweb="slider"] div > div > div > div {
+            height: 12px !important;
+        }
     }
     [data-testid="collapsedControl"] svg {
         visibility: hidden;
@@ -826,7 +840,7 @@ with tab4:
                     st.warning("No records selected for deletion.")
 
         else:
-            # Sort entries starting with newest and going to oldest based on combined datetime or raw date/time objects
+            # Sort entries starting with newest and going to oldest based on combined datetime
             sorted_df = filtered_df.sort_values(by="formatted_datetime", ascending=False, key=lambda col: pd.to_datetime(filtered_df["formatted_datetime"], errors="coerce"))
 
             for idx, row in sorted_df.iterrows():
@@ -836,7 +850,7 @@ with tab4:
                 st.markdown(f"### 🐟 {row.get('length')} in {row.get('species')} | 📅 {row.get('formatted_datetime')}")
                 st.write(f"🌤️ {row.get('weather')} | 💨 {row.get('wind_speed')} {row.get('wind_direction')} | 🌊 {row.get('tide')} | 🌙 {row.get('moon_phase')}")
 
-                # 2. Media row: 2 columns ([1, 1]) -> Left: Fish image, Right: Map on top, Lure image + name underneath map
+                # 2. Media row: 2 columns ([1, 1]) -> Left: Fish image, Right: Map on top, Lure name ABOVE picture underneath map
                 media_col1, media_col2 = st.columns([1, 1])
                 
                 with media_col1:
@@ -868,14 +882,14 @@ with tab4:
                         except Exception:
                             pass
 
-                    # Lure under the map with name and increased size (width=140)
+                    # Lure under the map with name ABOVE the picture (width=140)
                     lure_name = row.get("lure")
                     lures_list = load_lures()
                     matched_lure = next((l for l in lures_list if l.get("name", "").lower() == str(lure_name).lower()), None)
                     st.write("")
                     if matched_lure and matched_lure.get("image_path") and os.path.exists(matched_lure["image_path"]):
-                        st.image(matched_lure["image_path"], width=140)
                         st.write(f"🎣 **{lure_name}**")
+                        st.image(matched_lure["image_path"], width=140)
                     else:
                         st.write(f"🎣 **Lure:** {lure_name}")
 
@@ -905,11 +919,45 @@ with tab4:
                 if st.session_state.get(f"show_edit_panel_{row.get('id')}", False):
                     with st.container():
                         st.write(f"**Editing Catch ID:** {row.get('id')[:6]}")
-                        edit_species_key = f"edit_species_{row.get('id')}"
+                        
+                        # Species Dropdown & Quick Add in Edit Panel
+                        samples = load_species_samples()
+                        known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")] + [c.get("species") for c in catches if c.get("species")])))
+                        if not known_species:
+                            known_species = ["Snook", "Redfish", "Trout", "Tarpon", "Bass", "Flounder"]
+                        curr_species = row.get("species", "")
+                        if curr_species not in known_species:
+                            known_species.insert(0, curr_species)
+                        
+                        species_options = known_species + ["➕ Add New Fish Type..."]
+                        d_sp_idx = species_options.index(curr_species) if curr_species in species_options else 0
+                        
+                        selected_species_choice = st.selectbox("Type of Fish", species_options, index=d_sp_idx, key=f"edit_species_sb_{row.get('id')}")
+                        
+                        new_species = selected_species_choice
+                        if selected_species_choice == "➕ Add New Fish Type...":
+                            with st.expander("➕ Add New Fish Type", expanded=True):
+                                new_fish_name = st.text_input("New Fish Type Name", key=f"edit_new_fish_name_{row.get('id')}")
+                                if st.button("Save New Fish Type", key=f"edit_save_new_fish_btn_{row.get('id')}"):
+                                    if new_fish_name:
+                                        all_samples = load_species_samples()
+                                        all_samples.append({
+                                            "id": str(uuid.uuid4()),
+                                            "user_id": user["id"],
+                                            "catch_id": row.get("id"),
+                                            "species": new_fish_name,
+                                            "image_path": row.get("image_path", "")
+                                        })
+                                        save_species_samples_table(all_samples)
+                                        st.success(f"Fish type '{new_fish_name}' added! Please re-select it.")
+                                        st.rerun()
+                                    else:
+                                        st.error("Please enter a fish type name.")
+                            new_species = curr_species
+
                         edit_length_key = f"edit_len_{row.get('id')}"
                         edit_file_key = f"edit_file_{row.get('id')}"
 
-                        new_species = st.text_input("Type of Fish", value=row.get("species", ""), key=edit_species_key)
                         new_length = st.slider("Length (Inches)", 0.0, 40.0, float(row.get("length", 15.0)), 0.5, key=edit_length_key)
                         
                         # Lure Dropdown & Quick Add in Edit Panel
