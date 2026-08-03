@@ -21,15 +21,17 @@ controller = CookieController()
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
-# Custom CSS for larger touch-friendly sliders, black thumbs/tracks, sidebar filter icon, and responsive media layout
+# Custom CSS for custom white pointer slider thumbs, tracks, sidebar filter icon, and responsive media layout
 st.markdown("""
 <style>
-    /* Larger, touch-friendly slider thumbs and tracks for mobile and desktop accessibility */
+    /* Custom white pointer-shaped slider thumbs for mobile and desktop touch accessibility */
     .stSlider [data-baseweb="slider"] div[role="slider"] {
-        background-color: #000000 !important;
-        border-color: #000000 !important;
-        width: 28px !important;
-        height: 28px !important;
+        background-color: #ffffff !important;
+        border: 1px solid #888888 !important;
+        width: 32px !important;
+        height: 40px !important;
+        border-radius: 0px !important;
+        clip-path: polygon(50% 0%, 100% 35%, 100% 100%, 0% 100%, 0% 35%) !important;
         box-shadow: 0 2px 6px rgba(0,0,0,0.3) !important;
     }
     .stSlider [data-baseweb="slider"] div > div > div > div {
@@ -38,8 +40,8 @@ st.markdown("""
     }
     @media (max-width: 768px) {
         .stSlider [data-baseweb="slider"] div[role="slider"] {
-            width: 36px !important;
-            height: 36px !important;
+            width: 38px !important;
+            height: 46px !important;
         }
         .stSlider [data-baseweb="slider"] div > div > div > div {
             height: 12px !important;
