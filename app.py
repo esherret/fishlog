@@ -569,16 +569,19 @@ def get_moon_phase(dt):
     else: return "Waning Crescent"
 
 
-# --- ADVANCED FREE COMPUTER VISION & PATTERN RECOGNITION ENGINE (Pure Pillow/NumPy) ---
+# --- ADVANCED FREE RECOGNITION ENGINE WITH CONFIDENCE THRESHOLDING ---
 def recognize_fish_and_lure(processed_img_pil, lures):
     """
-    Compares image pixel arrays and color distribution using pure Pillow and NumPy 
-    without requiring native C++ OpenCV binary packages.
+    Compares color histograms and adds confidence thresholding so it 
+    falls back to historical frequency instead of falsely locking onto a default species.
     """
+    detected_species = "Snook"
     try:
-        # Resize query image for comparison
-        img_q = processed_img_pil.resize((100, 100)).convert("RGB")
+        img_q = processed_img_pil.resize((64, 64)).convert("RGB")
         arr_q = np.array(img_q, dtype=np.float32)
+        # Compute color histogram distribution vector for query
+        hist_q, _ = np.histogramdd(arr_q.reshape(-1, 3), bins=(8, 8, 8), range=((0, 256), (0, 256), (0, 256)))
+        hist_q = hist_q / np.sum(hist_q)
 
         samples = load_species_samples()
         species_scores = {}
@@ -592,21 +595,29 @@ def recognize_fish_and_lure(processed_img_pil, lures):
 
                 if sample_path and os.path.exists(sample_path):
                     try:
-                        s_img = Image.open(sample_path).resize((100, 100)).convert("RGB")
+                        s_img = Image.open(sample_path).resize((64, 64)).convert("RGB")
                         arr_s = np.array(s_img, dtype=np.float32)
+                        hist_s, _ = np.histogramdd(arr_s.reshape(-1, 3), bins=(8, 8, 8), range=((0, 256), (0, 256), (0, 256)))
+                        hist_s = hist_s / np.sum(hist_s)
 
-                        # Mean Absolute Error similarity metric normalized [0 to 1]
-                        diff = np.mean(np.abs(arr_q - arr_s))
-                        score = max(0.0, 1.0 - (diff / 255.0))
+                        # Histogram intersection similarity score [0 to 1]
+                        similarity = np.sum(np.minimum(hist_q, hist_s))
 
-                        if species_name not in species_scores or score > species_scores[species_name]:
-                            species_scores[species_name] = score
+                        if species_name not in species_scores or similarity > species_scores[species_name]:
+                            species_scores[species_name] = similarity
                     except Exception:
                         continue
 
-        detected_species = max(species_scores, key=species_scores.get) if species_scores else "Snook"
-        
-        # Historical frequency weighting
+        # Check top match confidence
+        if species_scores:
+            best_species = max(species_scores, key=species_scores.get)
+            best_score = species_scores[best_species]
+            
+            # Confidence threshold: if similarity is too low, rely on user history or default
+            if best_score >= 0.55:
+                detected_species = best_species
+
+        # Historical frequency weighting / Fallback
         user_catches = load_catches()
         if user_catches:
             species_counts = {}
@@ -616,13 +627,14 @@ def recognize_fish_and_lure(processed_img_pil, lures):
             
             if species_counts:
                 top_historical_species = max(species_counts, key=species_counts.get)
-                if species_counts[top_historical_species] >= 3 and top_historical_species in species_scores:
-                    if species_scores[top_historical_species] > 0.4:
-                        detected_species = top_historical_species
+                # If visual match was weak (< 0.55), default to user's most frequently logged catch
+                if not species_scores or max(species_scores.values()) < 0.55:
+                    detected_species = top_historical_species
 
     except Exception:
         detected_species = "Snook"
 
+    # Smart Lure Prediction using Historical Frequency
     detected_lure = None
     if lures and user_catches:
         lure_counts = {}
