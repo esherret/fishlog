@@ -680,7 +680,6 @@ with tab1:
     elif step == 3:
         st.subheader(f"Step 3: Select Length (Inches) for {st.session_state.wizard_data.get('species', 'Fish')}")
         
-        # Build numeric sizes properly sorted (e.g. 5.0, 5.5, 6.0 ... 40.0)
         size_floats = [round(x * 0.5, 1) for x in range(10, 81)]
         size_options = [f"{val:.1f}\"" for val in size_floats]
         
@@ -902,7 +901,7 @@ with tab2:
                     deleted_ids = []
                     for c in all_raw:
                         dt_str = c.get("formatted_datetime") or f"{c.get('date')} {c.get('time')}"
-                        if c.get("user_id"] == user["id"] and dt_str in selected_datetime_strs and str(c.get("is_deleted", "false")).lower() != "true":
+                        if c.get("user_id") == user["id"] and dt_str in selected_datetime_strs and str(c.get("is_deleted", "false")).lower() != "true":
                             c["is_deleted"] = "true"
                             deleted_ids.append(c.get("id"))
 
