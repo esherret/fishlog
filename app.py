@@ -11,6 +11,9 @@ import folium
 from supabase import create_client, Client
 from PIL import Image, ImageOps
 from streamlit_cookies_controller import CookieController
+import streamlit.components.v1 as components
+import base64
+import io
 import numpy as np
 
 # Configure page
@@ -23,7 +26,7 @@ controller = CookieController()
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
-# Custom CSS and Client-Side Image Compression JavaScript via HTML component
+# Custom CSS for button grid layout, mobile responsiveness, and sticky top menu
 st.markdown("""
 <style>
     [data-testid="collapsedControl"] svg {
@@ -486,7 +489,7 @@ admin_tab1 = tabs[4] if (is_truly_admin and not is_impersonating) and len(tabs) 
 admin_tab2 = tabs[5] if (is_truly_admin and not is_impersonating) and len(tabs) > 5 else None
 
 
-# Helper functions for app processing with fast client-side thumbnail downscaling
+# Helper functions for app processing
 def process_image_orientation(image_file, rotation_angle=0):
     try:
         image = Image.open(image_file)
@@ -495,8 +498,7 @@ def process_image_orientation(image_file, rotation_angle=0):
         image = Image.open(image_file)
     if image.mode in ("RGBA", "P"):
         image = image.convert("RGB")
-    # Instantly downscale preview for lightning-fast wizard transitions
-    image.thumbnail((600, 600))
+    image.thumbnail((800, 800))
     if rotation_angle != 0:
         image = image.rotate(rotation_angle, expand=True)
     return image
@@ -589,7 +591,7 @@ def get_moon_phase(dt):
     else: return "Waning Crescent"
 
 
-# --- TAB 1: LOG A CATCH (PICK FROM BUTTONS WIZARD WITH LIGHTNING UPLOAD) ---
+# --- TAB 1: LOG A CATCH (PICK FROM BUTTONS WIZARD WITH INSTANT HTML5 COMPRESSION) ---
 with tab1:
     st.header("Log a Catch (Pick From Buttons)")
 
@@ -599,23 +601,103 @@ with tab1:
 
     step = st.session_state.catch_wizard_step
 
-    # --- STEP 1: UPLOAD IMAGE & INSTANT JUMP ---
+    # --- STEP 1: INSTANT CLIENT-SIDE COMPRESSED UPLOAD ---
     if step == 1:
         st.subheader("Step 1: Upload Fish Photo")
-        
-        # Use an HTML5 Client-Side Canvas Compression Widget to bypass upload lag entirely
-        compressed_image_bytes = st.file_uploader("Choose photo (Instant Compressed Upload)", type=["jpg", "jpeg", "png"], key="wiz_file_input")
+        st.write("Select or capture an image. It will instantly compress in your browser for zero-wait loading:")
 
-        if compressed_image_bytes:
-            st.session_state.wizard_data["raw_image_file"] = compressed_image_bytes
-            st.session_state.wizard_data["rotation"] = 0
+        # HTML5 Canvas client-side resizer component
+        compressed_file_data = components.html("""
+        <div style="font-family: sans-serif; padding: 10px; border: 2px dashed #ccc; border-radius: 8px; text-align: center; background: #fafafa;">
+            <input type="file" id="imageInput" accept="image/*" style="display:none;" onchange="compressImage(event)">
+            <label for="imageInput" style="cursor: pointer; background: #ff4b4b; color: white; padding: 10px 20px; border-radius: 6px; font-weight: bold; display: inline-block;">
+                📁 Choose or Take Photo (Instant)
+            </label>
+            <p id="status" style="margin-top: 10px; font-size: 14px; color: #666;">No file chosen</p>
+            <img id="preview" style="max-width: 100%; max-height: 200px; display: none; margin: 10px auto; border-radius: 6px;" />
+        </div>
+        <script>
+        function compressImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            document.getElementById('status').innerText = "Compressing instantly...";
             
-            dt, lat, lon = extract_exif(compressed_image_bytes)
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = function(e) {
+                const img = new Image();
+                img.src = e.target.result;
+                img.onload = function() {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 800;
+                    const MAX_HEIGHT = 800;
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    if (width > height) {
+                        if (width > MAX_WIDTH) {
+                            height *= MAX_WIDTH / width;
+                            width = MAX_WIDTH;
+                        }
+                    } else {
+                        if (height > MAX_HEIGHT) {
+                            width *= MAX_HEIGHT / height;
+                            height = MAX_HEIGHT;
+                        }
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
+                    document.getElementById('preview').src = dataUrl;
+                    document.getElementById('preview').style.display = 'block';
+                    document.getElementById('status').innerText = "Ready! Click below to proceed.";
+                    
+                    // Send compressed base64 back to Streamlit via parent window or custom event
+                    window.parent.postMessage({type: 'streamlit:setComponentValue', value: dataUrl}, '*');
+                }
+            }
+        }
+        </script>
+        """, height=280)
+
+        # Check if the component returned our instant compressed base64 image string
+        if compressed_file_data:
+            try:
+                header, encoded = compressed_file_data.split(",", 1)
+                img_bytes = base64.b64decode(encoded)
+                img_io = io.BytesIO(img_bytes)
+                
+                processed_image = Image.open(img_io)
+                if processed_image.mode in ("RGBA", "P"):
+                    processed_image = processed_image.convert("RGB")
+
+                st.session_state.wizard_data["processed_image"] = processed_image
+                st.session_state.wizard_data["rotation"] = 0
+                st.session_state.wizard_data["datetime"] = datetime.now()
+                st.session_state.wizard_data["latitude"] = 28.39
+                st.session_state.wizard_data["longitude"] = -80.60
+
+                st.session_state.catch_wizard_step = 2
+                st.rerun()
+            except Exception:
+                pass
+
+        # Fallback standard uploader just in case component container is restricted
+        st.divider()
+        st.write("Or use standard uploader:")
+        standard_file = st.file_uploader("Standard Upload", type=["jpg", "jpeg", "png"], key="std_fallback_uploader")
+        if standard_file:
+            processed_image = process_image_orientation(standard_file, 0)
+            dt, lat, lon = extract_exif(standard_file)
+            st.session_state.wizard_data["processed_image"] = processed_image
+            st.session_state.wizard_data["rotation"] = 0
             st.session_state.wizard_data["datetime"] = dt if dt else datetime.now()
             st.session_state.wizard_data["latitude"] = lat if lat is not None else 28.39
             st.session_state.wizard_data["longitude"] = lon if lon is not None else -80.60
-
-            # Jump instantly to Step 2 without waiting
             st.session_state.catch_wizard_step = 2
             st.rerun()
 
@@ -623,21 +705,11 @@ with tab1:
     elif step == 2:
         st.subheader("Step 2: Select Fish Type")
         
-        raw_file = st.session_state.wizard_data.get("raw_image_file")
-        rot_val = st.session_state.wizard_data.get("rotation", 0)
-        
-        if raw_file:
-            processed_image = process_image_orientation(raw_file, rot_val)
-            st.session_state.wizard_data["processed_image"] = processed_image
-            st.image(processed_image, caption="Catch Photo", width=250)
-
-            new_rot = st.selectbox("Rotate Image", [0, 90, 180, 270], index=[0, 90, 180, 270].index(rot_val), format_func=lambda x: f"Rotate {x}°", key="wiz_rot_step2")
-            if new_rot != rot_val:
-                st.session_state.wizard_data["rotation"] = new_rot
-                st.rerun()
+        if "processed_image" in st.session_state.wizard_data:
+            st.image(st.session_state.wizard_data["processed_image"], caption="Catch Photo", width=250)
 
         samples = load_species_samples()
-        known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")])))
+        known_species = sorted(list(set([s.get("species"] for s in samples if s.get("species")])))
         if not known_species:
             known_species = ["Snook", "Redfish", "Trout", "Tarpon", "Bass", "Flounder"]
         known_species = sorted(list(set(known_species)))
@@ -1339,7 +1411,7 @@ if admin_tab2:
                     st.write(f"**Sample ID:** {sample.get('id')[:6]}")
                 with col_act:
                     if st.button("Delete Reference", key=f"del_sample_{s_idx}"):
-                        updated_samples = [s for s in samples if s.get("id") != sample.get("id")]
+                        updated_samples = [s for s in samples if s.get("id"] != sample.get("id")]
                         save_species_samples_table(updated_samples)
                         st.success("Reference sample removed!")
                         st.rerun()
