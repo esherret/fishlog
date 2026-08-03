@@ -14,7 +14,7 @@ from streamlit_cookies_controller import CookieController
 import numpy as np
 
 # Configure page
-st.set_page_config(page_title="Fish Catch Log", page_icon="🎣", layout="wide")
+st.set_page_config(page_title="Fish Catch Log - Pick From Buttons", page_icon="🎣", layout="wide")
 
 # Initialize persistent cookie controller
 controller = CookieController()
@@ -23,7 +23,7 @@ controller = CookieController()
 if "form_version" not in st.session_state:
     st.session_state.form_version = 0
 
-# Custom CSS for sidebar filter icon, responsive media layout, and sticky top navigation menu
+# Custom CSS for button grid layout, mobile responsiveness, and sticky top menu
 st.markdown("""
 <style>
     [data-testid="collapsedControl"] svg {
@@ -69,6 +69,12 @@ st.markdown("""
         padding-top: 10px;
         padding-bottom: 5px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    /* Custom styling for button grid items */
+    .stButton button {
+        width: 100%;
+        border-radius: 6px;
+        font-weight: 500;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -370,7 +376,6 @@ if st.session_state.clear_filters_flag:
 st.sidebar.header("Filter Log Entries")
 all_catches_for_filter = load_catches()
 
-# Wind direction windows definition
 wind_dir_windows = [
     ("N / NNE / NE", ["N", "NNE", "NE"]),
     ("NNE / NE / ENE", ["NNE", "NE", "ENE"]),
@@ -481,11 +486,7 @@ admin_tab2 = tabs[5] if (is_truly_admin and not is_impersonating) and len(tabs) 
 def process_image_orientation(image_file, rotation_angle=0):
     try:
         image = Image.open(image_file)
-        # Handle phone camera default portrait orientation properly without inverting
         image = ImageOps.exif_transpose(image)
-        if image.width > image.height and rotation_angle == 0:
-            # If landscape by default, keep or rotate based on standard portrait expectation
-            pass
     except Exception:
         image = Image.open(image_file)
     if image.mode in ("RGBA", "P"):
@@ -583,161 +584,246 @@ def get_moon_phase(dt):
     else: return "Waning Crescent"
 
 
-# --- TAB 1: LOG A CATCH ---
+# --- TAB 1: LOG A CATCH (PICK FROM BUTTONS WIZARD) ---
 with tab1:
-    st.header("Log a New Catch")
-    
-    v = st.session_state.form_version
-    
-    upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, key=f"upload_method_radio_{v}")
-    
-    if upload_method == "Camera":
-        catch_image_file = st.camera_input("Take photo", key=f"cam_input_widget_{v}")
-    else:
-        catch_image_file = st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key=f"file_input_widget_{v}")
+    st.header("Log a New Catch (Pick From Buttons)")
 
-    if catch_image_file:
-        dt, lat, lon = extract_exif(catch_image_file)
+    # Initialize wizard step if not present
+    if "catch_wizard_step" not in st.session_state:
+        st.session_state.catch_wizard_step = 1
+        st.session_state.wizard_data = {}
+
+    step = st.session_state.catch_wizard_step
+
+    # --- STEP 1: UPLOAD IMAGE & ROTATE ---
+    if step == 1:
+        st.subheader("Step 1: Upload Fish Photo")
+        upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, key="wiz_upload_method")
         
-        # Hidden coordinate defaults (lat/lon/weather still captured in background data)
-        manual_lat = lat if lat is not None else 28.39
-        manual_lon = lon if lon is not None else -80.60
-        combined_dt = datetime.combine(dt.date() if dt else datetime.now().date(), dt.time() if dt else datetime.now().time())
-        formatted_dt_str = combined_dt.strftime("%m/%d/%Y %I:%M %p")
-        weather_desc, wind_speed, wind_dir = get_nws_weather(manual_lat, manual_lon)
+        if upload_method == "Camera":
+            catch_image_file = st.camera_input("Take photo", key="wiz_cam_input")
+        else:
+            catch_image_file = st.file_uploader("Upload photo", type=["jpg", "jpeg", "png"], key="wiz_file_input")
 
-        # Determine most recent upload species and lure for this user
-        all_user_catches = load_catches()
-        default_species = "Snook"
-        default_lure = None
-        if all_user_catches:
-            last_catch = all_user_catches[-1]
-            if last_catch.get("species"):
-                default_species = last_catch.get("species")
-            if last_catch.get("lure"):
-                default_lure = last_catch.get("lure")
+        if catch_image_file:
+            rotation = st.selectbox("Rotate Image", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key="wiz_rot")
+            processed_image = process_image_orientation(catch_image_file, rotation)
+            st.image(processed_image, caption="Processed Photo", width=350)
 
+            dt, lat, lon = extract_exif(catch_image_file)
+            st.session_state.wizard_data["image_file"] = catch_image_file
+            st.session_state.wizard_data["processed_image"] = processed_image
+            st.session_state.wizard_data["datetime"] = dt if dt else datetime.now()
+            st.session_state.wizard_data["latitude"] = lat if lat is not None else 28.39
+            st.session_state.wizard_data["longitude"] = lon if lon is not None else -80.60
+
+            if st.button("Next: Choose Fish Type ➡️", type="primary"):
+                st.session_state.catch_wizard_step = 2
+                st.rerun()
+
+    # --- STEP 2: PICK FISH TYPE (BUTTONS) ---
+    elif step == 2:
+        st.subheader("Step 2: Select Fish Type")
+        
         samples = load_species_samples()
         known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")])))
         if not known_species:
             known_species = ["Snook", "Redfish", "Trout", "Tarpon", "Bass", "Flounder"]
         known_species = sorted(list(set(known_species)))
 
-        # 1. Type of Fish first (Alphabetical order)
-        d_sp_idx = known_species.index(default_species) if default_species in known_species else 0
-        species = st.selectbox("Select Type of Fish", known_species, index=d_sp_idx, key=f"c_species_sb_{v}")
-
-        # 2. Length next
-        length_options = [f"{x:.1f}" for x in [i * 0.5 for i in range(81)]]
-        default_len_idx = length_options.index("10.0") if "10.0" in length_options else 20
-        selected_len_str = st.selectbox("Length (Inches)", length_options, index=default_len_idx, key=f"c_len_{v}")
-        length = float(selected_len_str)
-
-        # 3. Lure next + Quick Add Option (Alphabetical order, default to last selected lure)
-        lures = load_lures()
-        lure_names = sorted(list(set([l["name"] for l in lures]))) if lures else []
-        lure_options = lure_names + ["➕ Add New Lure..."]
+        st.write("Click a fish type, or add a new one:")
         
-        d_lure_idx = 0
-        if default_lure in lure_names:
-            d_lure_idx = lure_names.index(default_lure)
+        # Display species as button grid (3 per row)
+        cols = st.cmp_cols = st.columns(3)
+        for idx, sp in enumerate(known_species):
+            col_idx = idx % 3
+            with cols[col_idx]:
+                if st.button(f"🐟 {sp}", key=f"btn_sp_{idx}"):
+                    st.session_state.wizard_data["species"] = sp
+                    st.session_state.catch_wizard_step = 3
+                    st.rerun()
 
-        selected_lure_choice = st.selectbox("Lure Used", lure_options, index=d_lure_idx, key=f"c_lure_sb_{v}")
-        
-        selected_lure = selected_lure_choice
-        if selected_lure_choice == "➕ Add New Lure...":
-            with st.expander("➕ Add New Lure", expanded=True):
-                new_lure_name = st.text_input("New Lure Name", key=f"new_l_name_{v}")
-                new_lure_img = st.file_uploader("Upload Lure Image", type=["jpg", "jpeg", "png"], key=f"new_l_img_{v}")
-                if st.button("Save New Lure", key=f"save_new_lure_btn_{v}"):
-                    if new_lure_name:
-                        l_img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
-                        if new_lure_img:
-                            process_image_orientation(new_lure_img).save(l_img_path, optimize=True, quality=80)
-                        else:
-                            l_img_path = ""
-                        
-                        updated_lures = load_lures()
-                        updated_lures.append({"id": str(uuid.uuid4()), "name": new_lure_name, "image_path": l_img_path})
-                        save_lures(updated_lures)
-                        st.success(f"Lure '{new_lure_name}' added successfully! Please re-select it from the dropdown.")
-                        st.rerun()
-                    else:
-                        st.error("Please enter a lure name.")
-            selected_lure = "None"
+        st.divider()
+        col_skip, col_add = st.columns(2)
+        with col_skip:
+            if st.button("⏭️ Skip (Unknown Species)"):
+                st.session_state.wizard_data["species"] = "Unknown"
+                st.session_state.catch_wizard_step = 3
+                st.rerun()
+        with col_add:
+            new_sp_input = st.text_input("Add New Fish Type")
+            if st.button("➕ Add & Select"):
+                if new_sp_input:
+                    st.session_state.wizard_data["species"] = new_sp_input
+                    # Save sample reference
+                    img_filename = f"sample_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                    img_path = os.path.join(SPECIES_SAMPLES_DIR, img_filename)
+                    st.session_state.wizard_data["processed_image"].save(img_path, optimize=True, quality=80)
+                    all_s = load_species_samples()
+                    all_s.append({
+                        "id": str(uuid.uuid4()),
+                        "user_id": user["id"],
+                        "catch_id": "wiz_upload",
+                        "species": new_sp_input,
+                        "image_path": img_path
+                    })
+                    save_species_samples_table(all_s)
+                    st.session_state.catch_wizard_step = 3
+                    st.rerun()
 
-        # 4. Image next, with rotation option directly below it updating instantly
-        rotation = st.selectbox("Rotate Image", [0, 90, 180, 270], format_func=lambda x: f"Rotate {x}°", key=f"rot_sel_{v}")
-        processed_image = process_image_orientation(catch_image_file, rotation)
-        st.image(processed_image, caption="Processed Photo", width=350)
-
-        # 5. Date and Time next
-        col_dt1, col_dt2 = st.columns(2)
-        with col_dt1:
-            log_date = st.date_input("Date", value=dt.date() if dt else datetime.now().date(), format="MM/DD/YYYY", key=f"c_date_{v}")
-        with col_dt2:
-            log_time = st.time_input("Time", value=dt.time() if dt else datetime.now().time(), key=f"c_time_{v}")
-
-        final_combined_dt = datetime.combine(log_date, log_time)
-        final_formatted_dt_str = final_combined_dt.strftime("%m/%d/%Y %I:%M %p")
-
-        col_act1, col_act2 = st.columns(2)
-        with col_act1:
-            save_clicked = st.button("Save Catch Entry", type="primary", key=f"save_btn_{v}")
-        with col_act2:
-            cancel_clicked = st.button("Cancel Upload", key=f"cancel_btn_{v}")
-
-        if cancel_clicked:
-            st.session_state.form_version += 1
+        if st.button("⬅️ Back"):
+            st.session_state.catch_wizard_step = 1
             st.rerun()
 
-        if save_clicked:
-            img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
-            img_path = os.path.join(CATCHES_DIR, img_filename)
-            processed_image.save(img_path, optimize=True, quality=80)
+    # --- STEP 3: PICK FISH SIZE (BUTTONS 5" TO 40" @ 0.5" INCR) ---
+    elif step == 3:
+        st.subheader(f"Step 3: Select Length (Inches) for {st.session_state.wizard_data.get('species', 'Fish')}")
+        
+        sizes = [f"{i * 0.5:.1f}" for i in range(10, 81)] # 5.0 to 40.0 in 0.5 steps
+        
+        # Display sizes in button grid (5 per row)
+        sz_cols = st.columns(5)
+        for idx, sz in enumerate(sizes):
+            c_idx = idx % 5
+            with sz_cols[c_idx]:
+                if st.button(f"{sz}\"", key=f"btn_sz_{idx}"):
+                    st.session_state.wizard_data["length"] = float(sz)
+                    st.session_state.catch_wizard_step = 4
+                    st.rerun()
 
-            catch_id = str(uuid.uuid4())
-            catches = load_all_catches_raw()
-            catches.append({
-                "id": catch_id,
-                "user_id": user["id"],
-                "date": log_date.strftime("%m/%d/%Y"),
-                "time": log_time.strftime("%I:%M %p"),
-                "formatted_datetime": final_formatted_dt_str,
-                "latitude": manual_lat,
-                "longitude": manual_lon,
-                "species": species if species else "Unknown",
-                "length": length,
-                "lure": selected_lure,
-                "weather": weather_desc,
-                "wind_speed": wind_speed,
-                "wind_direction": wind_dir,
-                "tide": get_tide_info(manual_lat, manual_lon, final_combined_dt),
-                "moon_phase": get_moon_phase(final_combined_dt),
-                "image_path": img_path,
-                "is_deleted": "false"
-            })
-            save_all_catches_raw(catches)
+        st.divider()
+        if st.button("⏭️ Skip Length"):
+            st.session_state.wizard_data["length"] = 10.0
+            st.session_state.catch_wizard_step = 4
+            st.rerun()
 
-            all_samples = load_species_samples()
-            existing_sample = next((s for s in all_samples if s.get("catch_id") == catch_id), None)
-            if existing_sample:
-                existing_sample["species"] = species if species else "Unknown"
-            else:
-                all_samples.append({
+        if st.button("⬅️ Back to Fish Type"):
+            st.session_state.catch_wizard_step = 2
+            st.rerun()
+
+    # --- STEP 4: PICK LURE (BUTTONS + SKIP / ADD) ---
+    elif step == 4:
+        st.subheader("Step 4: Select Lure Used")
+        
+        lures = load_lures()
+        lure_names = sorted(list(set([l["name"] for l in lures]))) if lures else []
+
+        if lure_names:
+            l_cols = st.columns(3)
+            for idx, lr in enumerate(lure_names):
+                lc_idx = idx % 3
+                with l_cols[lc_idx]:
+                    if st.button(f"🎣 {lr}", key=f"btn_lr_{idx}"):
+                        st.session_state.wizard_data["lure"] = lr
+                        st.session_state.catch_wizard_step = 5
+                        st.rerun()
+        else:
+            st.info("No lures found. Please add a lure below.")
+
+        st.divider()
+        col_lskip, col_ladd = st.columns(2)
+        with col_lskip:
+            if st.button("⏭️ Skip Lure"):
+                st.session_state.wizard_data["lure"] = "None"
+                st.session_state.catch_wizard_step = 5
+                st.rerun()
+        with col_ladd:
+            new_l_name = st.text_input("New Lure Name")
+            new_l_img = st.file_uploader("New Lure Image", type=["jpg", "jpeg", "png"], key="wiz_l_img")
+            if st.button("➕ Add Lure & Select"):
+                if new_l_name:
+                    l_img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
+                    if new_l_img:
+                        process_image_orientation(new_l_img).save(l_img_path, optimize=True, quality=80)
+                    else:
+                        l_img_path = ""
+                    
+                    updated_lures = load_lures()
+                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_l_name, "image_path": l_img_path})
+                    save_lures(updated_lures)
+                    st.session_state.wizard_data["lure"] = new_lure_name
+                    st.session_state.catch_wizard_step = 5
+                    st.rerun()
+
+        if st.button("⬅️ Back to Size"):
+            st.session_state.catch_wizard_step = 3
+            st.rerun()
+
+    # --- STEP 5: REVIEW SUMMARY & SAVE / EDIT ---
+    elif step == 5:
+        st.subheader("Step 5: Review & Confirm Catch")
+        
+        wd = st.session_state.wizard_data
+        st.write(f"🐟 **Fish Type:** {wd.get('species')}")
+        st.write(f"📏 **Length:** {wd.get('length')} inches")
+        st.write(f"🎣 **Lure:** {wd.get('lure')}")
+        st.write(f"📅 **Date/Time:** {wd.get('datetime').strftime('%m/%d/%Y %I:%M %p')}")
+        
+        if "processed_image" in wd:
+            st.image(wd["processed_image"], width=300)
+
+        col_fin1, col_fin2, col_fin3 = st.columns(3)
+        with col_fin1:
+            if st.button("✅ Add to Log", type="primary"):
+                img_filename = f"{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg"
+                img_path = os.path.join(CATCHES_DIR, img_filename)
+                wd["processed_image"].save(img_path, optimize=True, quality=80)
+
+                catch_id = str(uuid.uuid4())
+                manual_lat = wd.get("latitude", 28.39)
+                manual_lon = wd.get("longitude", -80.60)
+                combined_dt = wd.get("datetime", datetime.now())
+                weather_desc, wind_speed, wind_dir = get_nws_weather(manual_lat, manual_lon)
+
+                catches = load_all_catches_raw()
+                catches.append({
+                    "id": catch_id,
+                    "user_id": user["id"],
+                    "date": combined_dt.strftime("%m/%d/%Y"),
+                    "time": combined_dt.strftime("%I:%M %p"),
+                    "formatted_datetime": combined_dt.strftime("%m/%d/%Y %I:%M %p"),
+                    "latitude": manual_lat,
+                    "longitude": manual_lon,
+                    "species": wd.get("species"),
+                    "length": wd.get("length"),
+                    "lure": wd.get("lure"),
+                    "weather": weather_desc,
+                    "wind_speed": wind_speed,
+                    "wind_direction": wind_dir,
+                    "tide": get_tide_info(manual_lat, manual_lon, combined_dt),
+                    "moon_phase": get_moon_phase(combined_dt),
+                    "image_path": img_path,
+                    "is_deleted": "false"
+                })
+                save_all_catches_raw(catches)
+
+                # Add recognition sample
+                all_s = load_species_samples()
+                all_s.append({
                     "id": str(uuid.uuid4()),
                     "user_id": user["id"],
                     "catch_id": catch_id,
-                    "species": species if species else "Unknown",
+                    "species": wd.get("species"),
                     "image_path": img_path
                 })
-            save_species_samples_table(all_samples)
+                save_species_samples_table(all_s)
 
-            st.success("Catch successfully logged!")
-            st.session_state.form_version += 1
-            st.rerun()
-    else:
-        st.info("Please upload or take a photo of your catch to begin logging.")
+                st.success("Catch successfully added to log!")
+                st.session_state.catch_wizard_step = 1
+                st.session_state.wizard_data = {}
+                st.session_state.form_version += 1
+                st.rerun()
+
+        with col_fin2:
+            if st.button("✏️ Edit Details (Restart Wizard)"):
+                st.session_state.catch_wizard_step = 1
+                st.rerun()
+
+        with col_fin3:
+            if st.button("❌ Cancel / Discard"):
+                st.session_state.catch_wizard_step = 1
+                st.session_state.wizard_data = {}
+                st.rerun()
 
 
 # --- TAB 2: CATCH LOG ---
@@ -826,7 +912,7 @@ with tab2:
                     save_all_catches_raw(all_raw)
 
                     samples = load_species_samples()
-                    updated_samples = [s for s in samples if s.get("catch_id") not in deleted_ids]
+                    updated_samples = [s for s in samples if s.get("catch_id"] not in deleted_ids]
                     save_species_samples_table(updated_samples)
 
                     st.success(f"Successfully moved {len(selected_rows)} selected catch(es) to Recycle Bin!")
@@ -898,7 +984,7 @@ with tab2:
                         save_all_catches_raw(all_c)
                         
                         samples = load_species_samples()
-                        updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
+                        updated_samples = [s for s in samples if s.get("catch_id"] != row.get("id")]
                         save_species_samples_table(updated_samples)
                         
                         st.success("Moved to Recycle Bin!")
@@ -998,7 +1084,7 @@ with tab2:
                                             c["image_path"] = img_path
                                             
                                             samples = load_species_samples()
-                                            s_match = next((s for s in samples if s.get("catch_id") == row.get("id")), None)
+                                            s_match = next((s for s in samples if s.get("catch_id"] == row.get("id")), None)
                                             if s_match:
                                                 s_match["species"] = new_species
                                                 s_match["image_path"] = img_path
