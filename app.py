@@ -189,7 +189,7 @@ def admin_delete_user(user_id):
         return False, str(e)
 
 
-# Persistent Cookie Check for Auto-Login
+# Persistent Cookie Check for Auto-Login with Robust Fallbacks
 if "current_user" not in st.session_state:
     st.session_state.current_user = None
 
@@ -738,13 +738,13 @@ with tab1:
             if st.button("➕ Add Lure & Select"):
                 if new_l_name:
                     l_img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
-                    if new_l_img:
-                        process_image_orientation(new_l_img).save(l_img_path, optimize=True, quality=80)
+                    if new_lure_img:
+                        process_image_orientation(new_lure_img).save(l_img_path, optimize=True, quality=80)
                     else:
                         l_img_path = ""
                     
                     updated_lures = load_lures()
-                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_lure_name, "image_path": l_img_path})
+                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_l_name, "image_path": l_img_path})
                     save_lures(updated_lures)
                     st.session_state.wizard_data["lure"] = new_lure_name
                     st.session_state.catch_wizard_step = 5
@@ -1053,7 +1053,7 @@ with tab2:
                         if selected_lure_choice == "➕ Add New Lure...":
                             with st.expander("➕ Add New Lure", expanded=True):
                                 new_lure_name = st.text_input("New Lure Name", key=f"edit_new_l_name_{row.get('id')}")
-                                new_lure_img = st.file_uploader("Upload Lure Image", type=["jpg", "jpeg", "png"], key=f"edit_new_l_img_{row.get('id')}")
+                                new_lure_img = st.file_uploader("Replace Lure Image", type=["jpg", "jpeg", "png"], key=f"edit_new_l_img_{row.get('id')}")
                                 if st.button("Save New Lure", key=f"edit_save_new_lure_btn_{row.get('id')}"):
                                     if new_lure_name:
                                         l_img_path = os.path.join(LURES_DIR, f"lure_{datetime.now().strftime('%Y%m%d_%H%M%S_%f')}.jpg")
@@ -1189,7 +1189,7 @@ with tab4:
                 st.write(f"🎣 **{lure.get('name')}**")
             with col_l_act:
                 if st.button("Delete Lure", key=f"del_lure_{l_idx}_{lure.get('id')}"):
-                    updated_lures = [l for l in lures if l.get("id") != lure.get("id")]
+                    updated_lures = [l for l in lures if l.get("id"] != lure.get("id")]
                     save_lures(updated_lures)
                     st.success("Lure deleted!")
                     st.rerun()
@@ -1244,7 +1244,7 @@ if admin_tab1:
                         if submit_delete:
                             real_admin_obj = st.session_state.get("real_admin_user")
                             if real_admin_obj and u_id == real_admin_obj["id"]:
-                                st.error("You cannot delete your own active admin account active while logged in.")
+                                st.error("You cannot delete your own active admin account while logged in.")
                             else:
                                 success, msg = admin_delete_user(u_id)
                                 if success:
@@ -1262,7 +1262,7 @@ if admin_tab2:
         st.header("🧬 Fish Recognition Accuracy Library")
         st.write("Review, manage, and add reference sample images used by the heuristic model to improve species identification accuracy.")
         
-        with st.form("add_recognition_setup_form", clear_on_submit=True):
+        with st.form("add_recognition_sample_form", clear_on_submit=True):
             st.subheader("➕ Add New Recognition Reference Sample")
             new_sample_species = st.text_input("Fish Species Name")
             new_sample_file = st.file_uploader("Upload Reference Image", type=["jpg", "jpeg", "png"])
@@ -1302,7 +1302,7 @@ if admin_tab2:
                     st.write(f"**Sample ID:** {sample.get('id')[:6]}")
                 with col_act:
                     if st.button("Delete Reference", key=f"del_sample_{s_idx}"):
-                        updated_samples = [s for s in samples if s.get("id") != sample.get("id")]
+                        updated_samples = [s for s in samples if s.get("id"] != sample.get("id")]
                         save_species_samples_table(updated_samples)
                         st.success("Reference sample removed!")
                         st.rerun()
