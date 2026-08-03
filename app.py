@@ -651,7 +651,6 @@ with tab1:
                     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
                     document.getElementById('status').innerText = "Done! Moving to next step...";
                     
-                    // Transmit compressed data back to Streamlit and force script rerun
                     window.parent.postMessage({type: 'streamlit:setComponentValue', value: dataUrl}, '*');
                 }
             }
@@ -675,7 +674,6 @@ with tab1:
                 st.session_state.wizard_data["latitude"] = 28.39
                 st.session_state.wizard_data["longitude"] = -80.60
 
-                # Automatically advance to Step 2 instantly without any user clicks
                 st.session_state.catch_wizard_step = 2
                 st.rerun()
             except Exception:
@@ -799,9 +797,9 @@ with tab1:
                         l_img_path = ""
                     
                     updated_lures = load_lures()
-                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_l_name, "image_path": l_img_path})
+                    updated_lures.append({"id": str(uuid.uuid4()), "name": new_lure_name, "image_path": l_img_path})
                     save_lures(updated_lures)
-                    st.session_state.wizard_data["lure"] = new_l_name
+                    st.session_state.wizard_data["lure"] = new_lure_name
                     st.session_state.catch_wizard_step = 5
                     st.rerun()
 
@@ -1078,7 +1076,7 @@ with tab2:
                         save_all_catches_raw(all_c)
                         
                         samples = load_species_samples()
-                        updated_samples = [s for s in samples if s.get("catch_id") != row.get("id")]
+                        updated_samples = [s for s in samples if s.get("catch_id"] != row.get("id"))
                         save_species_samples_table(updated_samples)
                         
                         st.success("Moved to Recycle Bin!")
@@ -1252,8 +1250,6 @@ if admin_tab1:
                         if submit_delete:
                             real_admin_obj = st.session_state.get("real_admin_user")
                             if real_admin_obj and u_id == real_admin_obj["id"]:
-            real_admin_obj = st.session_state.get("real_admin_user")
-            if real_admin_obj and u_id == real_admin_obj["id"]:
                                 st.error("You cannot delete your own active admin account while logged in.")
                             else:
                                 success, msg = admin_delete_user(u_id)
