@@ -578,13 +578,11 @@ def recognize_fish_and_lure(processed_img_pil, lures):
     against the species_samples table, backed by historical frequency weighting.
     """
     try:
-        # Convert PIL image to OpenCV BGR and Grayscale formats
         img_np = np.array(processed_img_pil)
         bgr_img = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
         gray_query = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
         gray_query_resized = cv2.resize(gray_query, (200, 200))
 
-        # Compute Color Histogram for query image (HSV color space for lighting robustness)
         hsv_query = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2HSV)
         hist_query = cv2.calcHist([hsv_query], [0, 1], None, [50, 60], [0, 180, 0, 256])
         cv2.normalize(hist_query, hist_query, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
@@ -607,17 +605,14 @@ def recognize_fish_and_lure(processed_img_pil, lures):
                         s_gray = cv2.cvtColor(s_bgr, cv2.COLOR_BGR2GRAY)
                         s_gray_resized = cv2.resize(s_gray, (200, 200))
 
-                        # 1. Structural Similarity Index (SSIM) score [0 to 1]
                         score_ssim, _ = ssim(gray_query_resized, s_gray_resized, full=True)
 
-                        # 2. Color Histogram Correlation score [-1 to 1, normalized to 0 to 1]
                         s_hsv = cv2.cvtColor(s_bgr, cv2.COLOR_BGR2HSV)
                         hist_sample = cv2.calcHist([s_hsv], [0, 1], None, [50, 60], [0, 180, 0, 256])
                         cv2.normalize(hist_sample, hist_sample, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
                         score_hist = cv2.compareHist(hist_query, hist_sample, cv2.HISTCMP_CORREL)
-                        score_hist = max(0.0, score_hist) # clamp negative correlations
+                        score_hist = max(0.0, score_hist)
 
-                        # Combined match score (70% structural shape, 30% color profile)
                         combined_score = (0.7 * score_ssim) + (0.3 * score_hist)
 
                         if species_name not in species_scores or combined_score > species_scores[species_name]:
@@ -625,10 +620,8 @@ def recognize_fish_and_lure(processed_img_pil, lures):
                     except Exception:
                         continue
 
-        # Fallback / Default if no samples match well
         detected_species = max(species_scores, key=species_scores.get) if species_scores else "Snook"
         
-        # Apply Historical Context Weighting (Boost species frequently caught by this user)
         user_catches = load_catches()
         if user_catches:
             species_counts = {}
@@ -636,17 +629,15 @@ def recognize_fish_and_lure(processed_img_pil, lures):
                 sp = c.get("species")
                 species_counts[sp] = species_counts.get(sp, 0) + 1
             
-            # If a species has high historical frequency, give it a slight confidence bump
             if species_counts:
                 top_historical_species = max(species_counts, key=species_counts.get)
                 if species_counts[top_historical_species] >= 3 and top_historical_species in species_scores:
-                    if species_scores[top_historical_species] > 0.4: # Only if visual match is reasonable
+                    if species_scores[top_historical_species] > 0.4:
                         detected_species = top_historical_species
 
     except Exception:
         detected_species = "Snook"
 
-    # Smart Lure Prediction using Historical Frequency
     detected_lure = None
     if lures and user_catches:
         lure_counts = {}
@@ -669,7 +660,6 @@ def recognize_fish_and_lure(processed_img_pil, lures):
 with tab1:
     st.header("Log a New Catch")
     
-    # Use dynamic version suffix to force-clear all input widgets upon submission
     v = st.session_state.form_version
     
     upload_method = st.radio("Input Method", ["Gallery Upload", "Camera"], horizontal=True, key=f"upload_method_radio_{v}")
@@ -734,7 +724,6 @@ with tab1:
         selected_len_str = st.selectbox("Length (Inches)", length_options, index=default_len_idx, key=f"c_len_{v}")
         length = float(selected_len_str)
         
-        # Lure Selection Dropdown + Quick Add Option (Prefilled with AI/History prediction)
         lure_names = [l["name"] for l in lures] if lures else []
         lure_options = lure_names + ["➕ Add New Lure..."]
         
@@ -794,7 +783,6 @@ with tab1:
             })
             save_all_catches_raw(catches)
 
-            # Add or update sample in Fish Recognition Library upon selection/saving
             all_samples = load_species_samples()
             existing_sample = next((s for s in all_samples if s.get("catch_id") == catch_id), None)
             if existing_sample:
@@ -810,8 +798,6 @@ with tab1:
             save_species_samples_table(all_samples)
 
             st.success("Catch successfully logged!")
-            
-            # Increment form version to completely destroy and re-initialize all input widgets instantly
             st.session_state.form_version += 1
             st.rerun()
     else:
@@ -825,7 +811,6 @@ with tab2:
     if catches:
         filtered_df = get_filtered_catches_df()
         
-        # Build active filter summary sentence
         filter_parts = []
         if selected_species != "All":
             filter_parts.append(f"species equal to **{selected_species}**")
@@ -905,7 +890,7 @@ with tab2:
                     save_all_catches_raw(all_raw)
 
                     samples = load_species_samples()
-                    updated_samples = [s for s in samples if s.get("catch_id"] not in deleted_ids]
+                    updated_samples = [s for s in samples if s.get("catch_id") not in deleted_ids]
                     save_species_samples_table(updated_samples)
 
                     st.success(f"Successfully moved {len(selected_rows)} selected catch(es) to Recycle Bin!")
@@ -914,18 +899,15 @@ with tab2:
                     st.warning("No records selected for deletion.")
 
         else:
-            # Sort entries starting with newest and going to oldest based on combined datetime
             sorted_df = filtered_df.sort_values(by="formatted_datetime", ascending=False, key=lambda col: pd.to_datetime(filtered_df["formatted_datetime"], errors="coerce"))
 
             samples = load_species_samples()
             for idx, row in sorted_df.iterrows():
                 st.markdown('<div class="card-media-block">', unsafe_allow_html=True)
                 
-                # 1. Text info displayed first at the top of the card in larger font with "19.0 in Snook" format
                 st.markdown(f"### 🐟 {row.get('length')} in {row.get('species')} | 📅 {row.get('formatted_datetime')}")
                 st.write(f"🌤️ {row.get('weather')} | 💨 {row.get('wind_speed')} {row.get('wind_direction')} | 🌊 {row.get('tide')} | 🌙 {row.get('moon_phase')}")
 
-                # 2. Media row: 2 columns ([1, 1]) -> Left: Fish image, Right: Map on top, Lure name ABOVE picture underneath map
                 media_col1, media_col2 = st.columns([1, 1])
                 
                 with media_col1:
@@ -957,7 +939,6 @@ with tab2:
                         except Exception:
                             pass
 
-                    # Lure under the map with name ABOVE the picture (width=140)
                     lure_name = row.get("lure")
                     lures_list = load_lures()
                     matched_lure = next((l for l in lures_list if l.get("name", "").lower() == str(lure_name).lower()), None)
@@ -968,7 +949,6 @@ with tab2:
                     else:
                         st.write(f"🎣 **Lure:** {lure_name}")
 
-                # 3. Edit and Delete buttons last at the bottom of the card (Delete button styled red)
                 btn_col1, btn_col2 = st.columns([1, 1])
                 with btn_col1:
                     if st.button("Edit", key=f"edit_btn_{idx}"):
@@ -990,12 +970,10 @@ with tab2:
 
                 st.markdown('</div>', unsafe_allow_html=True)
 
-                # Interactive Edit panel
                 if st.session_state.get(f"show_edit_panel_{row.get('id')}", False):
                     with st.container():
                         st.write(f"**Editing Catch ID:** {row.get('id')[:6]}")
                         
-                        # Species Dropdown & Quick Add in Edit Panel
                         known_species = sorted(list(set([s.get("species") for s in samples if s.get("species")] + [c.get("species") for c in catches if c.get("species")])))
                         if not known_species:
                             known_species = ["Snook", "Redfish", "Trout", "Tarpon", "Bass", "Flounder"]
@@ -1035,7 +1013,6 @@ with tab2:
                         selected_edit_len_str = st.selectbox("Length (Inches)", length_options, index=d_len_idx, key=f"edit_len_{row.get('id')}")
                         new_length = float(selected_edit_len_str)
                         
-                        # Lure Dropdown & Quick Add in Edit Panel
                         lures_list = load_lures()
                         lure_names = [l["name"] for l in lures_list] if lures_list else []
                         lure_options = lure_names + ["➕ Add New Lure..."]
@@ -1083,7 +1060,6 @@ with tab2:
                                             process_image_orientation(new_img_file).save(img_path, optimize=True, quality=80)
                                             c["image_path"] = img_path
                                             
-                                            # Update recognition library sample
                                             samples = load_species_samples()
                                             s_match = next((s for s in samples if s.get("catch_id") == row.get("id")), None)
                                             if s_match:
@@ -1207,7 +1183,6 @@ if admin_tab1:
                 u_name = f"{u['first_name']} {u['last_name']} ({u['email']})"
                 
                 with st.expander(f"👤 {u_name} {'[ADMIN]' if u['is_admin'] else ''}"):
-                    # Impersonation button row
                     if st.button(f"🕵️ Impersonate {u['first_name']}", key=f"impersonate_{u_id}"):
                         st.session_state.current_user = u
                         st.success(f"Now impersonating {u['first_name']} {u['last_name']}! Switch to any tab to view their data.")
